@@ -502,7 +502,10 @@ func tick() -> void:
 	if r1 != null: r1.m = A.move; r1.rem = remaining(A)
 	if r2 != null: r2.m = B.move; r2.rem = remaining(B)
 	if r1 != null: apply_hit(A, B, r1)
-	if r2 != null: apply_hit(B, A, r2)
+	# A throw and a hit landing on the same frame: the grab wins, the other hit is dropped
+	# (otherwise the thrower gets knocked out of the throw and the victim is left frozen).
+	var grabbed := A.state in ["throwing", "thrown"] or B.state in ["throwing", "thrown"]
+	if r2 != null and not (grabbed and r2.type != "throw"): apply_hit(B, A, r2)
 	A.physics(); B.physics(); separate(A, B)
 	if A.state in Fighter.FREE_FACE: A.face_to(B, 0.3)
 	if B.state in Fighter.FREE_FACE: B.face_to(A, 0.3)
@@ -632,7 +635,7 @@ func apply_hit(att: Fighter, def: Fighter, res: Dictionary) -> void:
 
 func start_throw(att: Fighter, def: Fighter, m: Data.Move) -> void:
 	att.set_state("throwing"); att.victim = def; att.tm = m; att.throw_dir = att.fwd(); att.move = null
-	def.set_state("thrown"); def.break_throw = false; def.cmd_thrown = m.cmd_throw; def.thrown_by = m.throw_type
+	def.set_state("thrown"); def.thrower = att; def.break_throw = false; def.cmd_thrown = m.cmd_throw; def.thrown_by = m.throw_type
 	def.pend = 0; def.buffer = null; def.throw_t = 0.0; def.move = null; def.stance = ""
 	hitstop = 4; sfx("grab")
 	ui.pop_text(m.name.to_upper(), att.side)
@@ -931,6 +934,27 @@ func _run_autotest() -> void:
 				F[0].render(t_now); F[1].render(t_now)
 			print("AUTOTEST pose+springs cost per frame (both): %.2f ms" % ((Time.get_ticks_usec() - t0) / 100000.0))
 			await shot.call("fight")
+		"trade":
+			for setup in [["throw vs jab", "12", "1", 2], ["jab vs throw", "1", "12", -2], ["throw vs throw", "12", "12", 0]]:
+				start_match({mode = "training"}, [Data.by_id("tao"), Data.by_id("lio")])
+				dummy = 0
+				F[0].reset(-0.5); F[1].reset(0.5)
+				for i in 5: await get_tree().physics_frame
+				# line the active frames up so both connect on the same tick
+				var d: int = setup[3]
+				if d >= 0:
+					F[0].start_move(setup[1])
+					for i in d: await get_tree().physics_frame
+					F[1].start_move(setup[2])
+				else:
+					F[1].start_move(setup[2])
+					for i in -d: await get_tree().physics_frame
+					F[0].start_move(setup[1])
+				var states := []
+				for i in 150:
+					await get_tree().physics_frame
+					if i % 30 == 29: states.append("%s/%s" % [F[0].state, F[1].state])
+				print("AUTOTEST trade %-15s -> %s  final ok=%s" % [setup[0], " ".join(states), str(not (F[0].state in ["thrown", "throwing"] or F[1].state in ["thrown", "throwing"]))])
 		"combat":
 			await _combat_checks()
 		"string":

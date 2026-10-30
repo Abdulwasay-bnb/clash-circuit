@@ -44,6 +44,7 @@ var break_throw := false
 var cmd_thrown := false
 var thrown_by := ""
 var victim: Fighter
+var thrower: Fighter
 var tm: Data.Move
 var throw_dir := Vector3.FORWARD
 var down_len := 38
@@ -341,6 +342,15 @@ func step(opp: Fighter) -> void:
 				squash(0.6)
 		"throwing":
 			throw_step()
+		"thrown":
+			# Safety net: never stay grabbed by someone who is no longer throwing.
+			if sf > 3 and (thrower == null or thrower.state != "throwing" or thrower.victim != self):
+				pos.y = 0.0; down_len = 30
+				set_state("down")
+		"air":
+			if pos.y <= 0.0 and sf > 2 and vy <= 0.0:
+				pos.y = 0.0
+				land()
 
 
 func throw_step() -> void:

@@ -118,11 +118,12 @@ func _load(path: String) -> void:
 					grav = _v3(jt.get("gravityDir", [0, -1, 0])) * float(jt.get("gravityPower", 0.0)), hit = float(jt.get("hitRadius", 0.0)), cols = cols})
 			if not chain.is_empty(): springs.append(chain)
 	if vrm.has("expressions") and vrm.expressions.has("preset"):
+		var by_name := _mesh_names()
 		for name in vrm.expressions.preset:
 			var binds: Array = []
 			for b in vrm.expressions.preset[name].get("morphTargetBinds", []):
-				var n = state.get_scene_node(int(b.node))
-				if is_instance_valid(n) and n is MeshInstance3D:
+				var n = _mesh_for(by_name, nodes[int(b.node)].resource_name)
+				if n != null:
 					binds.append([n, int(b.index), float(b.weight)])
 			expressions[name] = binds
 
@@ -140,10 +141,11 @@ func _load_vrm0(j: Dictionary, state: GLTFState, bone_of: Callable) -> void:
 	# Map glTF mesh index -> scene MeshInstance3D nodes that use it.
 	var mesh_nodes := {}
 	var gnodes := state.get_nodes()
+	var by_name := _mesh_names()
 	for ni in gnodes.size():
 		if gnodes[ni].mesh >= 0:
-			var n = state.get_scene_node(ni)
-			if is_instance_valid(n) and n is MeshInstance3D:
+			var n = _mesh_for(by_name, gnodes[ni].resource_name)
+			if n != null:
 				mesh_nodes[gnodes[ni].mesh] = mesh_nodes.get(gnodes[ni].mesh, []) + [n]
 	var sa: Dictionary = vrm.get("secondaryAnimation", {})
 	var flip := func(o) -> Vector3: return Vector3(-float(o.get("x", 0)), float(o.get("y", 0)), float(o.get("z", 0)))   # Unity -> glTF
@@ -182,6 +184,22 @@ func _load_vrm0(j: Dictionary, state: GLTFState, bone_of: Callable) -> void:
 			for n in mesh_nodes.get(int(b.mesh), []):
 				binds.append([n, int(b.index), float(b.weight) / 100.0])
 		expressions[rename[preset]] = binds
+
+
+## The glTF importer swaps node objects while generating the scene, so look meshes up by name
+## in the finished scene instead of keeping the importer's (possibly freed) node references.
+func _mesh_names() -> Dictionary:
+	var d := {}
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		d[String(mi.name)] = mi
+	return d
+
+
+static func _mesh_for(by_name: Dictionary, raw_name) -> MeshInstance3D:
+	var n := String(raw_name)
+	if by_name.has(n): return by_name[n]
+	if by_name.has(n.validate_node_name()): return by_name[n.validate_node_name()]
+	return null
 
 
 static func _v3(a) -> Vector3:
