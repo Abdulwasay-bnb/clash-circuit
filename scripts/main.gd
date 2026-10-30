@@ -62,6 +62,11 @@ static func make_rig(C: Dictionary, costume := 0) -> Node3D:
 func _ready() -> void:
 	Data.load_all()
 	_setup_input_map()
+	if OS.has_feature("mobile"):
+		# Phones: lighter shadows, no MSAA, slightly reduced 3D resolution (UI stays sharp).
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+		get_viewport().scaling_3d_scale = 0.8
+		RenderingServer.directional_shadow_atlas_set_size(2048, true)
 	set_stage("neon")
 	_build_fx()
 	_build_audio()
@@ -319,6 +324,9 @@ func read_player(i: int) -> InputBuf.Frame:
 	if mode != "2p" and i == 0:
 		var r2 := _raw(1)
 		r = [clampi(r[0] + r2[0], -1, 1), clampi(r[1] + r2[1], -1, 1), r[2] | r2[2]]
+	if i == 0 and ui.touch != null and ui.touch.visible:
+		var t: TouchControls = ui.touch
+		r = [clampi(r[0] + t.x, -1, 1), clampi(r[1] + t.y, -1, 1), r[2] | t.held]
 	var p = _pad(i)
 	if p != null:
 		r = [clampi(r[0] + p[0], -1, 1), clampi(r[1] + p[1], -1, 1), r[2] | p[2]]
@@ -895,6 +903,36 @@ func _run_autotest() -> void:
 					await get_tree().physics_frame
 					if i % 30 == 29: states.append("%s/%s" % [F[0].state, F[1].state])
 				print("AUTOTEST trade %-15s -> %s  final ok=%s" % [setup[0], " ".join(states), str(not (F[0].state in ["thrown", "throwing"] or F[1].state in ["thrown", "throwing"]))])
+		"touch":
+			start_match({mode = "training", stage = "neon"}, [Data.by_id("kael"), Data.by_id("bastion")])
+			for i in 30: await get_tree().physics_frame
+			var t: TouchControls = ui.touch
+			var vp := get_viewport()
+			var ev := func(cls, idx: int, pos: Vector2, pressed := true):
+				var e = cls.new()
+				e.index = idx; e.position = pos
+				if cls == InputEventScreenTouch: e.pressed = pressed
+				Input.parse_input_event(e)
+			var x0: float = F[0].pos.x
+			var base := Vector2(t.size.x * 0.2, t.size.y * 0.7)
+			ev.call(InputEventScreenTouch, 0, base)
+			for i in 3: await get_tree().physics_frame
+			ev.call(InputEventScreenDrag, 0, base + Vector2(80, 0))
+			for i in 30: await get_tree().physics_frame
+			var walked: float = F[0].pos.x - x0
+			print("AUTOTEST touch stick: visible=%s x=%d state=%s walked=%.2f size=%s btn1=%s" % [t.visible, t.x, F[0].state, walked, t.size, t.buttons[0].center])
+			await shot.call("touch")
+			ev.call(InputEventScreenTouch, 0, base + Vector2(80, 0), false)
+			for i in 10: await get_tree().physics_frame
+			var b1: Vector2 = t.buttons[0].center
+			ev.call(InputEventScreenTouch, 1, b1)
+			for i in 4: await get_tree().physics_frame
+			ev.call(InputEventScreenTouch, 1, b1, false)
+			var seen := ""
+			for i in 20:
+				await get_tree().physics_frame
+				if F[0].move != null: seen = F[0].move.key
+			print("AUTOTEST touch button 1 -> move %s" % seen)
 		"combat":
 			await _combat_checks()
 		"string":

@@ -34,6 +34,8 @@ var sel = null
 var info: Array = []
 var pad_start := false
 var combo_last := [0, 0]
+var touch: TouchControls
+var touch_enabled := false
 
 
 # ---------------------------------------------------------------- helpers
@@ -330,6 +332,17 @@ func build() -> void:
 	ann.modulate.a = 0
 	screen = full(Control.new())
 	root.add_child(screen)
+	# On-screen controls on phones / tablets (or forced with --touch for testing on desktop).
+	touch_enabled = DisplayServer.is_touchscreen_available() or OS.has_feature("mobile") or "--touch" in OS.get_cmdline_user_args()
+	if touch_enabled:
+		# keep the left thumb zone clear: training info goes under the health bars instead
+		train_panel.anchor_top = 0; train_panel.anchor_bottom = 0
+		train_panel.offset_top = 100; train_panel.offset_bottom = 290
+	touch = TouchControls.new()
+	touch.font = F_TITLE
+	touch.visible = false
+	touch.pause_pressed.connect(func(): if view == "game" and not G.paused: show_pause())
+	root.add_child(touch)
 
 
 func _build_hud() -> void:
@@ -453,7 +466,7 @@ func show_hud(g) -> void:
 		p.sty.text = ("CPU · " + ["EASY", "NORMAL", "HARD"][g.cfg.lv]) if (i == 1 and g.mode == "cpu") else C.style.split("—")[0].strip_edges().to_upper()
 		p.img.texture = g.portraits.get(C.id)
 		(p.por.get_theme_stylebox("panel") as StyleBoxFlat).border_color = C.accent
-	hint.text = "[center]" + ("P1 [b]WASD[/b] + [b]U I J K[/b]   ·   P2 [b]Arrows[/b] + [b]Num 4 5 1 2[/b]   ·   [b]Esc[/b] pause" if g.mode == "2p" \
+	hint.text = "" if touch_enabled else "[center]" + ("P1 [b]WASD[/b] + [b]U I J K[/b]   ·   P2 [b]Arrows[/b] + [b]Num 4 5 1 2[/b]   ·   [b]Esc[/b] pause" if g.mode == "2p" \
 		else "[b]WASD[/b] move   ·   [b]U[/b] 1   [b]I[/b] 2   [b]J[/b] 3   [b]K[/b] 4   ·   tap [b]W[/b]/[b]S[/b] sidestep   ·   [b]Esc[/b] pause & move list") + "[/center]"
 	train_panel.visible = g.mode == "training"
 	hud.visible = true
@@ -470,6 +483,10 @@ func set_round_label(t: String) -> void:
 
 
 func update_hud(g) -> void:
+	var want_touch: bool = touch_enabled and view == "game" and not g.paused
+	if touch.visible != want_touch:
+		touch.visible = want_touch
+		touch.reset()
 	for i in 2:
 		var f: Fighter = g.F[i]
 		var p: Dictionary = plates[i]
@@ -838,6 +855,11 @@ func show_select(c: Dictionary) -> void:
 		v.add_child(dif)
 		var cos_l := lbl("", 18, F_TITLE, INK, 6)
 		cos_l.horizontal_alignment = al
+		cos_l.mouse_filter = Control.MOUSE_FILTER_STOP   # tap / click to change outfit
+		var side := s
+		cos_l.gui_input.connect(func(ev):
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and sel != null:
+				_select_move(side, "d"))
 		v.add_child(cos_l)
 		side_ui.append({wm = wm, box = v, chip = chip, chip_l = chip_l, nm = nm, ti = ti, org = org, sty = sty, radar = radar, sig = sig, dif = dif, cos = cos_l, right = right})
 	# card strip

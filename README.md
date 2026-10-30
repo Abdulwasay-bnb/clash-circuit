@@ -117,6 +117,24 @@ xvfb-run -a godot --path . --rendering-driver opengl3 -- --autotest=trials   # c
 godot --headless --path . --export-release "Web" build/web/index.html
 ```
 
+## 📱 Android
+
+```bash
+./build_android.sh      # -> build/android/ClashCircuit.apk (arm64, debug-signed)
+```
+
+Touch controls appear automatically on phones and tablets:
+
+- **Left half of the screen:** a floating stick that appears wherever your thumb lands.
+- **Right side:** the **1 2 / 3 4** attack buttons, plus **1+2** (throw) and **3+4** (Surge) shortcuts.
+- **Bottom center:** pause.
+
+Menus work by tapping, and on the select screen you tap the costume line to change outfits.
+
+To install, copy the APK to the phone and open it (allow installs from this source), or use
+`adb install -r build/android/ClashCircuit.apk`. The build is debug-signed for testing. Publishing on
+Google Play needs a release keystore.
+
 ## 🎨 Bring your own fighter
 
 Design a character in **VRoid Studio**, export it as **VRM 1.0**, and save it as
@@ -130,8 +148,9 @@ Design a character in **VRoid Studio**, export it as **VRM 1.0**, and save it as
 - [x] Combo Trials, smooth animation, web build
 - [x] Anime models for all 8 fighters (shared VRoid bases, restyled per fighter)
 - [ ] Unique VRoid outfits for every fighter
-- [ ] More stages
-- [ ] Android build with touch controls
+- [x] Five stages with weather, animated crowds and a live stage select
+- [x] Three costumes per fighter
+- [x] Android build with touch controls
 - [ ] Online versus
 
 ## 📜 Credits
