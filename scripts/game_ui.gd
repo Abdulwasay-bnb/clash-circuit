@@ -656,6 +656,7 @@ const MENU_DESC := [
 func show_title() -> void:
 	clear_screen(); screen.visible = true; view = "title"
 	G.leave_game() if not G.F.is_empty() else null
+	G.set_stage("neon")
 	var a: Dictionary = Data.ROSTER.pick_random()
 	var b: Dictionary = Data.ROSTER.filter(func(c): return c != a).pick_random()
 	G.set_preview(0, a); G.set_preview(1, b)
@@ -938,7 +939,7 @@ func _select_confirm(s: int) -> void:
 	if sel.locked[0] and sel.locked[1]:
 		var c: Dictionary = sel.cfg
 		var p := [Data.ROSTER[sel.cur[0]], Data.ROSTER[sel.cur[1]]]
-		get_tree().create_timer(0.6).timeout.connect(func(): show_vs(c, p))
+		get_tree().create_timer(0.6).timeout.connect(func(): show_stage(c, p))
 
 
 func _select_back(s: int) -> void:
@@ -947,6 +948,84 @@ func _select_back(s: int) -> void:
 	if sel.cfg.mode != "2p" and sel.locked[0]:
 		sel.locked[0] = false; _render_select(); return
 	show_title()
+
+
+# ---- stage select (the real stage loads live behind the menu)
+var stage_sel := {}
+
+
+func show_stage(c: Dictionary, p: Array) -> void:
+	clear_screen(); screen.visible = true; view = "stage"
+	stage_sel = {cfg = c, picks = p, i = 0, cards = []}
+	G.set_preview(0, p[0]); G.set_preview(1, p[1])
+	G.preview[0].win = false; G.preview[1].win = false
+	var bot := full(vgrad(Color(0.02, 0.03, 0.06, 0.0), Color(0.02, 0.03, 0.06, 0.95)))
+	bot.anchor_top = 0.55
+	screen.add_child(bot)
+	var banner := PanelContainer.new()
+	banner.add_theme_stylebox_override("panel", sbox(Color(0.04, 0.06, 0.11, 0.92), Color(1, 1, 1, 0.12), 1, 0.3))
+	place(banner, screen, Control.PRESET_CENTER_TOP, Vector2(-220, 16))
+	banner.custom_minimum_size = Vector2(440, 0)
+	var t := lbl("SELECT STAGE", 30, F_TITLE, INK, 6)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner.add_child(t)
+	var name_l := lbl("", 64, F_TITLE, INK, 12)
+	place(name_l, screen, Control.PRESET_BOTTOM_LEFT, Vector2(70, -330))
+	var sub_l := lbl("", 20, F_BODY, GOLD)
+	place(sub_l, screen, Control.PRESET_BOTTOM_LEFT, Vector2(74, -250))
+	stage_sel.name_l = name_l; stage_sel.sub_l = sub_l
+	var strip := HBoxContainer.new()
+	strip.add_theme_constant_override("separation", -10)
+	screen.add_child(strip)
+	strip.anchor_left = 0.5; strip.anchor_right = 0.5; strip.anchor_top = 1; strip.anchor_bottom = 1
+	strip.offset_left = -440; strip.offset_right = 440; strip.offset_top = -205; strip.offset_bottom = -72
+	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	var entries: Array = Stage.LIST.duplicate()
+	entries.append({id = "random", name = "Random", sub = "Let fate pick the ground", accent = Color(0.5, 0.55, 0.65)})
+	for i in entries.size():
+		var e: Dictionary = entries[i]
+		var card := SkewCard.new()
+		card.custom_minimum_size = Vector2(150, 125)
+		card.size_flags_vertical = Control.SIZE_SHRINK_END
+		card.font = F_TITLE
+		card.accent = e.accent
+		card.title = e.name.to_upper()
+		if e.id != "random":
+			var g := Gradient.new()
+			g.set_color(0, e.accent.darkened(0.75)); g.set_color(1, e.accent.darkened(0.15))
+			var gt := GradientTexture2D.new(); gt.gradient = g; gt.fill_from = Vector2(0, 1); gt.fill_to = Vector2(0, 0)
+			card.tex = gt
+		card.mouse_entered.connect(func(): if view == "stage" and stage_sel.i != i: stage_sel.i = i; _render_stage())
+		card.gui_input.connect(func(ev):
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+				stage_sel.i = i; _stage_confirm())
+		strip.add_child(card)
+		stage_sel.cards.append([card, e])
+	var help := lbl("◀ ▶  A D / Arrows  choose    ·    U / Enter  fight!    ·    J / Esc  back", 15, F_BODY, DIM)
+	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	place(help, screen, Control.PRESET_CENTER_BOTTOM, Vector2(0, -18))
+	_render_stage()
+
+
+func _render_stage() -> void:
+	var cards: Array = stage_sel.cards
+	for k in cards.size():
+		cards[k][0].hl = [k == stage_sel.i, false]
+	var e: Dictionary = cards[stage_sel.i][1]
+	stage_sel.name_l.text = e.name.to_upper()
+	stage_sel.name_l.label_settings.font_color = e.accent.lightened(0.3)
+	stage_sel.sub_l.text = e.sub
+	if e.id != "random":
+		G.set_stage(e.id)
+	G.sfx("ui")
+
+
+func _stage_confirm() -> void:
+	var e: Dictionary = stage_sel.cards[stage_sel.i][1]
+	var c: Dictionary = stage_sel.cfg.duplicate()
+	c.stage = Stage.LIST.pick_random().id if e.id == "random" else e.id
+	G.sfx("ok")
+	show_vs(c, stage_sel.picks)
 
 
 func show_vs(c: Dictionary, p: Array) -> void:
@@ -984,6 +1063,10 @@ func show_vs(c: Dictionary, p: Array) -> void:
 		side.create_tween().tween_property(side, "position:x", 0.0, 0.45).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	var vs := lbl("VS", 150, F_TITLE, GOLD, 18)
 	place(vs, screen, Control.PRESET_CENTER)
+	if c.has("stage"):
+		var sl := lbl("STAGE  ·  " + Stage.info(c.stage).name.to_upper(), 18, F_TITLE, Color(0.85, 0.9, 1.0), 6)
+		sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		place(sl, screen, Control.PRESET_CENTER_BOTTOM, Vector2(-150, -60))
 	vs.pivot_offset = vs.size / 2
 	vs.scale = Vector2(3, 3); vs.modulate.a = 0
 	var tw := vs.create_tween()
@@ -1237,6 +1320,13 @@ func _unhandled_input(e: InputEvent) -> void:
 			if k == KEY_T: G.cycle_dummy()
 			if k == KEY_R: G.reset_training()
 			if k == KEY_C: G.cycle_trial()
+		return
+	if view == "stage":
+		var n: int = stage_sel.cards.size()
+		if k in [KEY_A, KEY_LEFT]: stage_sel.i = (stage_sel.i + n - 1) % n; _render_stage()
+		elif k in [KEY_D, KEY_RIGHT]: stage_sel.i = (stage_sel.i + 1) % n; _render_stage()
+		elif k in [KEY_U, KEY_ENTER, KEY_SPACE, KEY_KP_4, KEY_O]: _stage_confirm()
+		elif k in [KEY_J, KEY_ESCAPE, KEY_BACKSPACE]: show_select(stage_sel.cfg)
 		return
 	if view == "select" and sel != null:
 		var two: bool = sel.cfg.mode == "2p"

@@ -25,10 +25,10 @@ const LIST := {
 	"vex": {file = SEED},
 	# Taekwondo: white dobok top, navy pants, jet-black hair
 	"sora": {file = GIRL, tint = {
-		"Tops": {c = Color(1, 1, 1), sat = 0.0, bright = 1.25},
+		"Tops": {c = Color(0.92, 0.93, 0.96), sat = 0.0, bright = 0.92},
 		"Bottoms": Color(0.3, 0.33, 0.75),
-		"Hair": {c = Color(0.55, 0.55, 0.62), sat = 0.3, bright = 0.7},
-		"Shoes": {c = Color(1, 1, 1), sat = 0.0, bright = 1.2}}},
+		"Hair": {c = Color(0.22, 0.22, 0.28), sat = 0.2, bright = 0.55},
+		"Shoes": {c = Color(0.92, 0.92, 0.94), sat = 0.0, bright = 0.95}}},
 	# Luchadora: royal purple, flame-orange hair, gold boots
 	"ember": {file = GIRL, tint = {
 		"Tops": Color(0.7, 0.3, 1.0),

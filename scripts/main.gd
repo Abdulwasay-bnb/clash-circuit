@@ -42,6 +42,7 @@ var players: Array = []
 var player_i := 0
 var t_now := 0.0
 var autotest := ""
+var stage: Stage
 var trials: Array = []
 var trial_i := 0
 var trial_step := 0
@@ -59,8 +60,7 @@ static func make_rig(C: Dictionary) -> Node3D:
 func _ready() -> void:
 	Data.load_all()
 	_setup_input_map()
-	_build_env()
-	_build_arena()
+	set_stage("neon")
 	_build_fx()
 	_build_audio()
 	camera = Camera3D.new()
@@ -91,37 +91,6 @@ func _setup_input_map() -> void:
 
 
 # ------------------------------------------------------------------ world
-func _build_env() -> void:
-	var we := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.024, 0.035, 0.07)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.6, 0.8)
-	env.ambient_light_energy = 0.55
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.03, 0.045, 0.09)
-	env.fog_density = 0.012
-	env.glow_enabled = true
-	env.glow_intensity = 0.45
-	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 1.4
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	we.environment = env
-	add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1, 0.96, 0.9)
-	sun.light_energy = 1.05
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 25
-	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(30), 0)
-	add_child(sun)
-	for d in [[Color(0.18, 0.9, 1.0), Vector3(deg_to_rad(-20), deg_to_rad(-130), 0), 0.45], [Color(1, 0.3, 0.42), Vector3(deg_to_rad(-20), deg_to_rad(130), 0), 0.35]]:
-		var l := DirectionalLight3D.new()
-		l.light_color = d[0]; l.rotation = d[1]; l.light_energy = d[2]
-		add_child(l)
-
-
 func _mesh(m: Mesh, mat: Material, pos := Vector3.ZERO, rot := Vector3.ZERO) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = m; mi.material_override = mat; mi.position = pos; mi.rotation = rot
@@ -129,56 +98,11 @@ func _mesh(m: Mesh, mat: Material, pos := Vector3.ZERO, rot := Vector3.ZERO) -> 
 	return mi
 
 
-func _build_arena() -> void:
-	var fm := ShaderMaterial.new()
-	fm.shader = preload("res://shaders/floor.gdshader")
-	var plane := PlaneMesh.new(); plane.size = Vector2(18, 18)
-	var floor_mi := _mesh(plane, fm)
-	floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var ground := PlaneMesh.new(); ground.size = Vector2(160, 160)
-	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.03, 0.04, 0.07)
-	_mesh(ground, gm, Vector3(0, -0.03, 0))
-	var edge := TorusMesh.new(); edge.inner_radius = 8.93; edge.outer_radius = 9.07; edge.rings = 128
-	var em := StandardMaterial3D.new(); em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; em.albedo_color = Color(0.18, 0.9, 1.0)
-	_mesh(edge, em, Vector3(0, 0.02, 0))
-	var pm := StandardMaterial3D.new(); pm.albedo_color = Color(0.09, 0.12, 0.2); pm.metallic = 0.5; pm.roughness = 0.5
-	for i in 8:
-		var a := i / 8.0 * TAU + PI / 8
-		var x := sin(a) * 12.5
-		var z := cos(a) * 12.5
-		var c := CylinderMesh.new(); c.top_radius = 0.35; c.bottom_radius = 0.5; c.height = 8
-		_mesh(c, pm, Vector3(x, 4, z))
-		for k in 3:
-			var r := TorusMesh.new(); r.inner_radius = 0.38; r.outer_radius = 0.46
-			var rm := StandardMaterial3D.new(); rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			rm.albedo_color = Color(1, 0.3, 0.42) if i % 2 else Color(0.18, 0.9, 1.0)
-			_mesh(r, rm, Vector3(x, 2.2 + k * 2.2, z))
-	# crowd silhouettes
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	var cm := CapsuleMesh.new(); cm.radius = 0.22; cm.height = 0.95
-	mm.mesh = cm
-	mm.instance_count = 260
-	for i in 260:
-		var row := i % 4
-		var a := randf() * TAU
-		var r := 15.0 + row * 1.4
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * randf_range(0.9, 1.2)), Vector3(sin(a) * r, 0.6 + row * 0.7, cos(a) * r)))
-	var cmi := MultiMeshInstance3D.new(); cmi.multimesh = mm
-	var crowd_m := StandardMaterial3D.new(); crowd_m.albedo_color = Color(0.04, 0.05, 0.09)
-	cmi.material_override = crowd_m
-	add_child(cmi)
-	# skyline
-	var wsh := preload("res://shaders/windows.gdshader")
-	for i in 70:
-		var a := randf() * TAU
-		var r := randf_range(26, 44)
-		var h := randf_range(8, 30)
-		var w := randf_range(2, 6)
-		var b := BoxMesh.new(); b.size = Vector3(w, h, w)
-		var sm := ShaderMaterial.new(); sm.shader = wsh
-		sm.set_shader_parameter("repeat", Vector2(w * 1.2, h * 0.9)); sm.set_shader_parameter("seed", randf() * 100.0)
-		_mesh(b, sm, Vector3(sin(a) * r, h / 2, cos(a) * r), Vector3(0, a, 0))
+func set_stage(sid: String) -> void:
+	if stage != null and stage.id == sid: return
+	if stage != null: stage.queue_free()
+	stage = Stage.make(sid)
+	add_child(stage)
 
 
 func _build_fx() -> void:
@@ -415,6 +339,7 @@ func start_match(c: Dictionary, p: Array) -> void:
 	for f in F:
 		f.rig.queue_free()
 	cfg = c; picks = p; mode = c.mode
+	set_stage(c.get("stage", Stage.LIST.pick_random().id))
 	F = [Fighter.new(self, p[0], 0), Fighter.new(self, p[1], 1)]
 	inputs = [InputBuf.new(), InputBuf.new()]
 	ai = [null, FighterAI.new(self, c.lv) if mode == "cpu" else null]
@@ -823,6 +748,12 @@ func _run_autotest() -> void:
 			ui.show_title()
 			await get_tree().create_timer(1.0).timeout
 			await shot.call("title")
+		"stagesel":
+			ui.show_stage({mode = "cpu", lv = 1}, [Data.by_id("ember"), Data.by_id("bastion")])
+			ui.stage_sel.i = 2
+			ui._render_stage()
+			await get_tree().create_timer(2.0).timeout
+			await shot.call("stagesel")
 		"select":
 			ui.show_select({mode = "cpu", lv = 1})
 			await get_tree().create_timer(1.0).timeout
@@ -831,7 +762,10 @@ func _run_autotest() -> void:
 			var ids := ["mara", "lio"]
 			for a in OS.get_cmdline_user_args():
 				if a.begins_with("--pair="): ids = a.substr(7).split(",")
-			start_match({mode = "cpu", lv = 2}, [Data.by_id(ids[0]), Data.by_id(ids[1])])
+			var st := "neon"
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--stage="): st = a.substr(8)
+			start_match({mode = "cpu", lv = 2, stage = st}, [Data.by_id(ids[0]), Data.by_id(ids[1])])
 			ai[0] = FighterAI.new(self, 2)
 			await get_tree().create_timer(6.0).timeout
 			await shot.call("fight")
