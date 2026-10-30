@@ -25,6 +25,10 @@ var arm_axis := {}                # limb -> rest hinge axis
 var accent := Color.WHITE
 var qb := Basis.IDENTITY          # model -> rig rotation (VRM 0.x models face -Z, so they are turned 180°)
 var qi := Basis.IDENTITY
+var springs: Array = []           # spring chains (hair, skirts, sleeves): Array of joint dicts, parents first
+var colliders: Array = []         # {b, off, r, tail}: spheres / capsules attached to bones
+var last_us := 0
+var last_root := Vector3.INF
 var constraints: Array = []      # VRMC_node_constraint: rotation / roll / aim
 
 
@@ -87,6 +91,32 @@ func _load(path: String) -> void:
 		if dst < 0 or src < 0: continue
 		constraints.append({kind = kind, dst = dst, src = src, w = float(c.get("weight", 1.0)),
 			axis = axes.get(c.get("aimAxis", c.get("rollAxis", "X")), Vector3.RIGHT)})
+	if j.extensions.has("VRMC_springBone"):
+		var sb: Dictionary = j.extensions.VRMC_springBone
+		var cmap := []
+		for c in sb.get("colliders", []):
+			var sh: Dictionary = c.shape
+			var d: Dictionary = sh.get("sphere", sh.get("capsule", {}))
+			var bi: int = bone_of.call(int(c.node))
+			cmap.append(colliders.size())
+			colliders.append({b = bi, off = _v3(d.get("offset", [0, 0, 0])), r = float(d.get("radius", 0.0)),
+				tail = _v3(d.tail) if sh.has("capsule") else null})
+		var groups: Array = sb.get("colliderGroups", [])
+		for sp in sb.get("springs", []):
+			var cols := []
+			for gi in sp.get("colliderGroups", []):
+				for ci in groups[int(gi)].colliders:
+					if colliders[cmap[int(ci)]].b >= 0: cols.append(cmap[int(ci)])
+			var js: Array = sp.joints
+			var chain := []
+			for i in js.size() - 1:   # the last joint is only the tail of the one before it
+				var b: int = bone_of.call(int(js[i].node))
+				var tb: int = bone_of.call(int(js[i + 1].node))
+				if b < 0 or tb < 0: continue
+				var jt: Dictionary = js[i]
+				chain.append({b = b, tail = tb, stiff = float(jt.get("stiffness", 1.0)), drag = float(jt.get("dragForce", 0.5)),
+					grav = _v3(jt.get("gravityDir", [0, -1, 0])) * float(jt.get("gravityPower", 0.0)), hit = float(jt.get("hitRadius", 0.0)), cols = cols})
+			if not chain.is_empty(): springs.append(chain)
 	if vrm.has("expressions") and vrm.expressions.has("preset"):
 		for name in vrm.expressions.preset:
 			var binds: Array = []
@@ -115,6 +145,34 @@ func _load_vrm0(j: Dictionary, state: GLTFState, bone_of: Callable) -> void:
 			var n = state.get_scene_node(ni)
 			if is_instance_valid(n) and n is MeshInstance3D:
 				mesh_nodes[gnodes[ni].mesh] = mesh_nodes.get(gnodes[ni].mesh, []) + [n]
+	var sa: Dictionary = vrm.get("secondaryAnimation", {})
+	var flip := func(o) -> Vector3: return Vector3(-float(o.get("x", 0)), float(o.get("y", 0)), float(o.get("z", 0)))   # Unity -> glTF
+	var group_cols := []
+	for g in sa.get("colliderGroups", []):
+		var ids := []
+		var bi: int = bone_of.call(int(g.node))
+		for c in g.get("colliders", []):
+			ids.append(colliders.size())
+			colliders.append({b = bi, off = flip.call(c.get("offset", {})), r = float(c.get("radius", 0.0)), tail = null})
+		group_cols.append(ids)
+	for g in sa.get("boneGroups", []):
+		var cols := []
+		for gi in g.get("colliderGroups", []):
+			cols.append_array(group_cols[int(gi)])
+		var params := {stiff = float(g.get("stiffiness", 1.0)), drag = float(g.get("dragForce", 0.4)), hit = float(g.get("hitRadius", 0.02)),
+			grav = flip.call(g.get("gravityDir", {"x": 0, "y": -1, "z": 0})) * float(g.get("gravityPower", 0.0))}
+		for root in g.get("bones", []):
+			var chain := []
+			var stack := [bone_of.call(int(root))]
+			while not stack.is_empty():
+				var b: int = stack.pop_front()
+				if b < 0: continue
+				var kids := skel.get_bone_children(b)
+				var jd := params.duplicate()
+				jd.b = b; jd.tail = kids[0] if kids.size() > 0 else -1; jd.cols = cols
+				chain.append(jd)
+				for kb in kids: stack.append(kb)
+			if not chain.is_empty(): springs.append(chain)
 	var rename := {"joy": "happy", "sorrow": "sad", "fun": "surprised", "angry": "angry", "neutral": "neutral"}
 	for g in vrm.get("blendShapeMaster", {}).get("blendShapeGroups", []):
 		var preset: String = String(g.get("presetName", "")).to_lower()
@@ -124,6 +182,10 @@ func _load_vrm0(j: Dictionary, state: GLTFState, bone_of: Callable) -> void:
 			for n in mesh_nodes.get(int(b.mesh), []):
 				binds.append([n, int(b.index), float(b.weight) / 100.0])
 		expressions[rename[preset]] = binds
+
+
+static func _v3(a) -> Vector3:
+	return Vector3(float(a[0]), float(a[1]), float(a[2]))
 
 
 func _shader(key: String) -> Shader:
@@ -223,6 +285,16 @@ func _index_skeleton() -> void:
 		order.append(b)
 		for c in skel.get_bone_children(b):
 			stack.append(c)
+	for chain in springs:
+		for jn in chain:
+			var tail_l: Vector3
+			if jn.tail >= 0:
+				tail_l = rest_l[jn.tail].origin
+			else:   # VRM 0.x leaf: virtual 7 cm tail continuing the bone's direction
+				var dir: Vector3 = rest_l[jn.b].origin.normalized()
+				tail_l = rest_l[jn.b].basis.inverse() * dir * 0.07
+			jn.axis = tail_l.normalized()
+			jn.len = tail_l.length()
 	var hip_y: float = rest_g[bones.hips].origin.y
 	k = 0.95 / hip_y
 	model.scale = Vector3.ONE * k
@@ -323,9 +395,6 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 	var res := _solve(want, hip_pos, over)
 	var G: Dictionary = res[0]
 	var Ls: Dictionary = res[1]
-	for b in order:
-		skel.set_bone_pose_rotation(b, Ls[b].basis.get_rotation_quaternion())
-		skel.set_bone_pose_position(b, Ls[b].origin)
 	# Keep feet on the floor: no foot may sink below its rest height.
 	var lift := 0.0
 	if ground and not foot_rest.is_empty():
@@ -336,7 +405,64 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 		if p[Pose.LIFT] > 0.001:
 			lift = maxf(lift, 0.0)
 	model.position.y = lift
+	if not springs.is_empty():
+		_springs(G, Ls)
+	for b in order:
+		skel.set_bone_pose_rotation(b, Ls[b].basis.get_rotation_quaternion())
+		skel.set_bone_pose_position(b, Ls[b].origin)
 	head.position = model.transform * G[bones.head].origin + Vector3(0, 0.06, 0)
+
+
+## VRM spring bones (hair, skirts, sleeves), simulated in world space so they react to movement.
+func _springs(G: Dictionary, Ls: Dictionary) -> void:
+	if not is_inside_tree(): return
+	var SK := skel.global_transform
+	var now := Time.get_ticks_usec()
+	var dt := clampf((now - last_us) / 1000000.0, 0.001, 1.0 / 30.0)
+	last_us = now
+	var ws := SK.basis.get_scale().x   # world size of one skeleton unit
+	var root: Vector3 = SK * G[bones.hips].origin
+	var reset := last_root.distance_to(root) > 0.8   # teleported (new round): restart from rest
+	last_root = root
+	var cw := []
+	for c in colliders:
+		if c.b < 0:
+			cw.append(null); continue
+		var T: Transform3D = SK * G[c.b]
+		cw.append([T * c.off, (T * c.tail) if c.tail != null else null, c.r * ws])
+	for chain in springs:
+		for jn in chain:
+			var b: int = jn.b
+			var par := skel.get_bone_parent(b)
+			var pg: Transform3D = G[par] if par >= 0 else Transform3D.IDENTITY
+			var PW := SK * pg
+			var head_w: Vector3 = PW * Ls[b].origin
+			var prot := PW.basis.orthonormalized()
+			var rest_rot: Basis = prot * rest_l[b].basis.orthonormalized()
+			var ln: float = jn.len * ws
+			if reset or not jn.has("cur"):
+				jn.cur = head_w + rest_rot * jn.axis * ln
+				jn.prev = jn.cur
+			var nxt: Vector3 = jn.cur + (jn.cur - jn.prev) * (1.0 - jn.drag) + rest_rot * jn.axis * jn.stiff * dt * ws + jn.grav * dt * ws
+			nxt = head_w + (nxt - head_w).normalized() * ln
+			for ci in jn.cols:
+				var c = cw[ci]
+				if c == null: continue
+				var p: Vector3 = c[0]
+				if c[1] != null:   # capsule: nearest point on its segment
+					var seg: Vector3 = c[1] - c[0]
+					p = c[0] + seg * clampf((nxt - c[0]).dot(seg) / maxf(seg.length_squared(), 1e-8), 0.0, 1.0)
+				var r: float = c[2] + jn.hit * ws
+				var d := nxt - p
+				if d.length() < r and d.length() > 1e-6:
+					nxt = head_w + ((p + d.normalized() * r) - head_w).normalized() * ln
+			jn.prev = jn.cur
+			jn.cur = nxt
+			var from: Vector3 = rest_rot * jn.axis
+			var to := (nxt - head_w).normalized()
+			var wrot := rest_rot if from.dot(to) > 0.99999 else Basis(Quaternion(from, to)) * rest_rot
+			Ls[b] = Transform3D(prot.inverse() * wrot, Ls[b].origin)
+			G[b] = pg * Ls[b]
 
 
 ## Walk the hierarchy turning desired global rotations into local poses. Returns [globals, locals].

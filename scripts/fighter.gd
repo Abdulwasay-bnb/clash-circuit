@@ -295,7 +295,9 @@ func step(opp: Fighter) -> void:
 			pos -= f * 0.024 * sp; walk_ph -= 0.22 * sp
 		"dash":
 			pos += f * 0.11 * sp * maxf(0.0, 1.0 - sf / 14.0); walk_ph += 0.4
-			if sf >= 14: to_neutral()
+			if sf >= 14:
+				to_neutral()
+				squash(0.4)   # plant the feet at the end of the dash
 		"bdash":
 			pos -= f * 0.1 * sp * maxf(0.0, 1.0 - sf / 18.0)
 			if sf >= 18: to_neutral()
@@ -306,6 +308,8 @@ func step(opp: Fighter) -> void:
 			if sf >= C.stances[stance].dur: to_neutral()
 		"attack":
 			var m := move
+			if m.jump and sf == m.s + m.a + 2:
+				squash(0.8)
 			# Linear moves only track for 2 frames; homing moves track through startup.
 			if sf <= 2 or (m.homing and sf < m.s):
 				face_to(opp, 0.5 if m.homing else 0.35)
@@ -332,7 +336,9 @@ func step(opp: Fighter) -> void:
 		"down":
 			if sf >= down_len: set_state("getup")
 		"getup":
-			if sf >= 22: to_neutral()
+			if sf >= 22:
+				to_neutral()
+				squash(0.6)
 		"throwing":
 			throw_step()
 
@@ -403,11 +409,13 @@ func land() -> void:
 		# Ground bounce: a short hop that combos can pick up.
 		bounced = true
 		vy = 0.05; pos.y = 0.01; air_v *= 0.3; juggle += 2
+		pose_vel[Pose.ROOT_RX] += 0.25; pose_vel[Pose.TORSO_X] -= 0.2   # body slaps the floor and rebounds
 		G.shake = maxf(G.shake, 0.08); G.sfx("thud")
 		G.burst(Vector3(pos.x, 0.05, pos.z), Color(0.72, 0.77, 0.84), 8, 1.2)
 		return
 	juggle = 0; air_v = Vector3.ZERO; down_len = 38; bounced = false
 	set_state("ko" if hp <= 0 else "down")
+	pose_vel[Pose.TORSO_X] += 0.18; pose_vel[Pose.HEAD_X] += 0.25   # head and chest settle after the fall
 	G.shake = maxf(G.shake, 0.1); G.sfx("thud")
 	G.burst(Vector3(pos.x, 0.05, pos.z), Color(0.72, 0.77, 0.84), 10, 1.5)
 
@@ -466,6 +474,39 @@ func target_pose() -> PackedFloat32Array:
 			return P.grab if sf < 12 else P.lift
 		"win": return P.win
 	return P.guard
+
+
+## Physical reaction: push joint velocities so the spring pose system recoils naturally.
+## lvl = where it landed, power ~ damage / 10, blocked = guard absorbed it.
+func kick(lvl: String, power: float, blocked := false) -> void:
+	var p := clampf(power, 0.4, 2.2) * (0.45 if blocked else 1.0)
+	var twist := randf_range(-0.1, 0.1) * p
+	match lvl:
+		"high":
+			pose_vel[Pose.HEAD_X] -= 0.32 * p; pose_vel[Pose.TORSO_X] -= 0.14 * p
+			pose_vel[Pose.HEAD_Y] += twist * 1.5
+		"low":
+			pose_vel[Pose.LK] += 0.25 * p; pose_vel[Pose.RK] += 0.18 * p; pose_vel[Pose.HIP_Y] -= 0.035 * p
+			pose_vel[Pose.TORSO_X] += 0.08 * p
+		_:
+			pose_vel[Pose.TORSO_X] += 0.2 * p; pose_vel[Pose.HEAD_X] += 0.12 * p; pose_vel[Pose.HIP_Y] -= 0.025 * p
+	pose_vel[Pose.TORSO_Y] += twist
+	pose_vel[Pose.TORSO_Z] += randf_range(-0.06, 0.06) * p
+	if blocked:
+		pose_vel[Pose.LSX] += 0.15 * p; pose_vel[Pose.RSX] += 0.15 * p
+
+
+## Impact recoil for the attacker (a connecting hit stops the limb and jolts the body back a little).
+func recoil(power: float) -> void:
+	pose_vel[Pose.TORSO_X] -= 0.05 * clampf(power, 0.4, 2.0)
+	pose_vel[Pose.HIP_Y] -= 0.01
+
+
+## Landing squash: knees absorb the fall.
+func squash(power: float) -> void:
+	pose_vel[Pose.HIP_Y] -= 0.06 * power
+	pose_vel[Pose.LK] += 0.35 * power; pose_vel[Pose.RK] += 0.35 * power
+	pose_vel[Pose.TORSO_X] += 0.08 * power
 
 
 func save_prev() -> void:

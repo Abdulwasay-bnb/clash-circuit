@@ -588,6 +588,7 @@ func apply_hit(att: Fighter, def: Fighter, res: Dictionary) -> void:
 		def.crouch_block = m.lvl == "low"
 		def.vel = f * (m.push * 0.8 if m.push > 0 else 0.05)
 		att.meter = minf(100.0, att.meter + 2); def.meter = minf(100.0, def.meter + 3)
+		def.kick(m.lvl, m.dmg / 10.0, true)
 		hitstop = 5; burst(cp, Color(0.5, 0.85, 1.0), 10, 2.5); sfx("block"); fd_log(att, "BLOCK")
 		return
 	# Damage scaling: each extra hit in a combo is worth 10% less (min 30%).
@@ -613,6 +614,8 @@ func apply_hit(att: Fighter, def: Fighter, res: Dictionary) -> void:
 		def.stun = maxi(6, rem + int(m.hit if m.hit != null else 0) + (8 if res.ch else 0))
 		def.hit_lvl = m.lvl; def.hit_crouch = was_low; def.move = null; def.queued = ""; def.stance = ""
 		def.vel = f * (m.push if m.push > 0 else 0.045)
+	def.kick("high" if air else m.lvl, m.dmg / 10.0 * (1.4 if res.ch else 1.0))
+	att.recoil(m.dmg / 10.0)
 	var big: bool = m.surge or launch or m.kd or res.ch
 	hitstop = 40 if m.surge else 10 if big else 7
 	shake = 0.35 if m.surge else 0.16 if big else 0.07
@@ -897,6 +900,37 @@ func _run_autotest() -> void:
 					trace.append("%s/%d|%s y%.2f h%d d%.2f" % [F[0].move.key if F[0].move else F[0].state, F[0].sf, F[1].state, F[1].pos.y, F[1].combo_hits, F[0].dist_to(F[1])])
 				if id == "bastion": print("AUTOTEST TRACE ", " ; ".join(trace))
 				print("AUTOTEST juggle %-8s keys=%s cleared=%s max_hits=%d" % [id, keys, trial_done.get(trial_i, false), best])
+		"springs":
+			start_match({mode = "cpu", lv = 2}, [Data.by_id("vex"), Data.by_id("ember")])
+			ai[0] = FighterAI.new(self, 2)
+			var stats := {}
+			for f in 300:
+				await get_tree().physics_frame
+				if f % 30 != 29: continue
+				for fi in 2:
+					var r = F[fi].rig
+					if not (r is VrmRig): continue
+					var mx := 0.0
+					var tot := 0.0
+					var n := 0
+					var bad := false
+					for chain in r.springs:
+						for jn in chain:
+							var q: Quaternion = r.skel.get_bone_pose_rotation(jn.b)
+							var rq: Quaternion = r.rest_l[jn.b].basis.get_rotation_quaternion()
+							var ang := rad_to_deg(q.angle_to(rq))
+							if is_nan(ang): bad = true
+							mx = maxf(mx, ang); tot += ang; n += 1
+					var key: String = F[fi].C.id
+					if not stats.has(key): stats[key] = []
+					stats[key].append("%.0f/%.0f%s" % [tot / maxf(1, n), mx, " NaN!" if bad else ""])
+			for k in stats:
+				print("AUTOTEST springs %s joints=%d avg/max deg over time: %s" % [k, _count_joints(k), " ".join(stats[k])])
+			var t0 := Time.get_ticks_usec()
+			for i in 100:
+				F[0].render(t_now); F[1].render(t_now)
+			print("AUTOTEST pose+springs cost per frame (both): %.2f ms" % ((Time.get_ticks_usec() - t0) / 100000.0))
+			await shot.call("fight")
 		"combat":
 			await _combat_checks()
 		"string":
@@ -913,6 +947,15 @@ func _run_autotest() -> void:
 				log.append("%d:%s/%s q=%s" % [f, F[0].move.key if F[0].move else F[0].state, F[0].sf, F[0].queued])
 			print("AUTOTEST ", " ".join(log))
 	get_tree().quit()
+
+
+func _count_joints(id: String) -> int:
+	for f in F:
+		if f.C.id == id and f.rig is VrmRig:
+			var n := 0
+			for chain in f.rig.springs: n += chain.size()
+			return n
+	return 0
 
 
 func _combat_checks() -> void:
