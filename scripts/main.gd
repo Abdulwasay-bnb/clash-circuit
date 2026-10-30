@@ -51,8 +51,10 @@ var trial_done := {}
 const DUMMY := ["Stand (no guard)", "Guard all", "Crouch", "CPU"]
 
 
-static func make_rig(C: Dictionary) -> Node3D:
+static func make_rig(C: Dictionary, costume := 0) -> Node3D:
 	var r = VrmRig.new() if VrmRig.has_model(C) else ToonRig.new()
+	if r is VrmRig:
+		r.costume = costume
 	r.build(C)
 	return r
 
@@ -340,7 +342,8 @@ func start_match(c: Dictionary, p: Array) -> void:
 		f.rig.queue_free()
 	cfg = c; picks = p; mode = c.mode
 	set_stage(c.get("stage", Stage.LIST.pick_random().id))
-	F = [Fighter.new(self, p[0], 0), Fighter.new(self, p[1], 1)]
+	var cos: Array = c.get("costumes", [0, 0])
+	F = [Fighter.new(self, p[0], 0, cos[0]), Fighter.new(self, p[1], 1, cos[1])]
 	inputs = [InputBuf.new(), InputBuf.new()]
 	ai = [null, FighterAI.new(self, c.lv) if mode == "cpu" else null]
 	wins = [0, 0]; round_n = 1; frame = 0; dummy = 0; fd = null; paused = false
@@ -708,10 +711,10 @@ func _menu_camera() -> void:
 		r.apply_pose(q)
 
 
-func set_preview(side: int, C: Dictionary) -> void:
-	if preview[side] != null and preview[side].C == C: return
+func set_preview(side: int, C: Dictionary, costume := 0) -> void:
+	if preview[side] != null and preview[side].C == C and preview[side].costume == costume: return
 	if preview[side] != null: preview[side].rig.queue_free()
-	var rig := make_rig(C)
+	var rig := make_rig(C, costume)
 	add_child(rig)
 	# glowing pedestal in the fighter's color
 	for spec in [[0.42, 0.62, 0.9], [0.0, 0.62, 0.18]]:
@@ -728,7 +731,7 @@ func set_preview(side: int, C: Dictionary) -> void:
 		mi.scale = Vector3(1, 0.05, 1) if spec[0] > 0.0 else Vector3.ONE
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		rig.add_child(mi)
-	preview[side] = {C = C, rig = rig, disp = C.pose.guard.duplicate(), win = false}
+	preview[side] = {C = C, rig = rig, disp = C.pose.guard.duplicate(), win = false, costume = costume}
 
 
 func clear_preview() -> void:
@@ -787,7 +790,10 @@ func _run_autotest() -> void:
 				if a.begins_with("--id="): id = a.substr(5)
 				if a.begins_with("--move="): mv = a.substr(7)
 			var C := Data.by_id(id)
-			var rig := make_rig(C)
+			var cos := 0
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--costume="): cos = int(a.substr(10))
+			var rig := make_rig(C, cos)
 			add_child(rig)
 			var p: PackedFloat32Array = C.pose.guard
 			if mv != "":

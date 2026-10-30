@@ -773,7 +773,7 @@ func _signature(C: Dictionary) -> Data.Move:
 
 func show_select(c: Dictionary) -> void:
 	clear_screen(); screen.visible = true; view = "select"
-	sel = {cfg = c, cur = [0, 1], locked = [false, false]}
+	sel = {cfg = c, cur = [0, 1], locked = [false, false], cos = [0, 0]}
 	card_list.clear(); side_ui.clear()
 	screen.add_child(full(Stripes.new()))
 	var top := full(vgrad(Color(0.02, 0.03, 0.06, 0.9), Color(0.02, 0.03, 0.06, 0.0)))
@@ -836,7 +836,10 @@ func show_select(c: Dictionary) -> void:
 		var dif := lbl("", 15, F_BODY, GOLD)
 		dif.horizontal_alignment = al
 		v.add_child(dif)
-		side_ui.append({wm = wm, box = v, chip = chip, chip_l = chip_l, nm = nm, ti = ti, org = org, sty = sty, radar = radar, sig = sig, dif = dif, right = right})
+		var cos_l := lbl("", 18, F_TITLE, INK, 6)
+		cos_l.horizontal_alignment = al
+		v.add_child(cos_l)
+		side_ui.append({wm = wm, box = v, chip = chip, chip_l = chip_l, nm = nm, ti = ti, org = org, sty = sty, radar = radar, sig = sig, dif = dif, cos = cos_l, right = right})
 	# card strip
 	var strip := HBoxContainer.new()
 	strip.add_theme_constant_override("separation", -10)
@@ -865,8 +868,8 @@ func show_select(c: Dictionary) -> void:
 				sel.cur[sd] = i; _select_confirm(sd))
 		strip.add_child(card)
 		card_list.append(card)
-	var help := lbl("◀ ▶  A D / Arrows  choose    ·    U / Enter  confirm    ·    J / Esc  back    ·    or click" if c.mode != "2p" \
-		else "P1   A D + U        ·        P2   ◀ ▶ + Num4 / O        ·        Esc  back", 15, F_BODY, DIM)
+	var help := lbl("◀ ▶  A D / Arrows  fighter    ·    W S / ↑ ↓  costume    ·    U / Enter  confirm    ·    J / Esc  back" if c.mode != "2p" \
+		else "P1   A D fighter · W S costume · U        ·        P2   ◀ ▶ fighter · ↑ ↓ costume · Num4 / O        ·        Esc  back", 15, F_BODY, DIM)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	place(help, screen, Control.PRESET_CENTER_BOTTOM, Vector2(0, -18))
 	_render_select()
@@ -897,11 +900,15 @@ func _render_select() -> void:
 		card_list[idx].locked[s] = sel.locked[s]
 		if idx == 8:
 			u.nm.text = "RANDOM"; u.ti.text = "Fate decides"; u.org.text = ""; u.sty.text = ""; u.wm.text = "?"
-			u.sig.text = ""; u.dif.text = ""; u.radar.vals = [0.5, 0.5, 0.5, 0.5, 0.5]; u.radar.accent = Color(0.6, 0.65, 0.75)
+			u.sig.text = ""; u.dif.text = ""; u.cos.text = ""; u.radar.vals = [0.5, 0.5, 0.5, 0.5, 0.5]; u.radar.accent = Color(0.6, 0.65, 0.75)
 			continue
 		var C: Dictionary = Data.ROSTER[idx]
-		G.set_preview(s, C)
+		var names: Array = Models.costume_names(C.id)
+		sel.cos[s] = clampi(sel.cos[s], 0, names.size() - 1)
+		G.set_preview(s, C, sel.cos[s])
 		G.preview[s].win = sel.locked[s]
+		var keys := "↑↓" if (s == 1 and sel.cfg.mode == "2p") else "W S"
+		u.cos.text = ("◀  %s  ▶   %d/%d" % [names[sel.cos[s]].to_upper(), sel.cos[s] + 1, names.size()]) + ("" if sel.locked[s] else "   (" + keys + ")")
 		var who := "1P" if s == 0 else ("2P" if sel.cfg.mode == "2p" else "CPU" if sel.cfg.mode == "cpu" else "DUMMY")
 		u.chip_l.text = "  %s%s  " % [who, "   ·   READY" if sel.locked[s] else ""]
 		u.chip.add_theme_stylebox_override("panel", sbox(C.accent, Color(0, 0, 0, 0), 0, 0.35))
@@ -922,7 +929,16 @@ func _select_move(s: int, d: String) -> void:
 	var i: int = sel.cur[s]
 	if d == "l": i = (i + 8) % 9
 	elif d == "r": i = (i + 1) % 9
-	else: return
+	elif i < 8:
+		# up / down cycles the costume of the highlighted fighter
+		var n: int = Models.costume_names(Data.ROSTER[i].id).size()
+		sel.cos[s] = (sel.cos[s] + (n - 1 if d == "u" else 1)) % n
+		G.sfx("ui")
+		_render_select()
+		return
+	else:
+		return
+	if i != sel.cur[s]: sel.cos[s] = 0
 	sel.cur[s] = i
 	G.sfx("ui")
 	_render_select()
@@ -930,14 +946,20 @@ func _select_move(s: int, d: String) -> void:
 
 func _select_confirm(s: int) -> void:
 	if sel.locked[s]: return
-	if sel.cur[s] == 8: sel.cur[s] = randi_range(0, 7)
+	if sel.cur[s] == 8:
+		sel.cur[s] = randi_range(0, 7)
+		sel.cos[s] = randi_range(0, Models.costume_names(Data.ROSTER[sel.cur[s]].id).size() - 1)
 	sel.locked[s] = true
 	G.sfx("ok")
 	if sel.cfg.mode != "2p" and s == 0:
 		sel.cur[1] = (sel.cur[0] + randi_range(1, 7)) % 8
 	_render_select()
 	if sel.locked[0] and sel.locked[1]:
-		var c: Dictionary = sel.cfg
+		# Mirror match in the same outfit: give player 2 the next costume so both stay readable.
+		if sel.cur[0] == sel.cur[1] and sel.cos[0] == sel.cos[1]:
+			sel.cos[1] = (sel.cos[1] + 1) % Models.costume_names(Data.ROSTER[sel.cur[1]].id).size()
+		var c: Dictionary = sel.cfg.duplicate()
+		c.costumes = sel.cos.duplicate()
 		var p := [Data.ROSTER[sel.cur[0]], Data.ROSTER[sel.cur[1]]]
 		get_tree().create_timer(0.6).timeout.connect(func(): show_stage(c, p))
 
@@ -957,7 +979,8 @@ var stage_sel := {}
 func show_stage(c: Dictionary, p: Array) -> void:
 	clear_screen(); screen.visible = true; view = "stage"
 	stage_sel = {cfg = c, picks = p, i = 0, cards = []}
-	G.set_preview(0, p[0]); G.set_preview(1, p[1])
+	var cos: Array = c.get("costumes", [0, 0])
+	G.set_preview(0, p[0], cos[0]); G.set_preview(1, p[1], cos[1])
 	G.preview[0].win = false; G.preview[1].win = false
 	var bot := full(vgrad(Color(0.02, 0.03, 0.06, 0.0), Color(0.02, 0.03, 0.06, 0.95)))
 	bot.anchor_top = 0.55

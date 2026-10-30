@@ -63,12 +63,12 @@ var prev_face := 0.0
 var bounced := false
 
 
-func _init(game, ch: Dictionary, s: int) -> void:
+func _init(game, ch: Dictionary, s: int, costume := 0) -> void:
 	G = game
 	C = ch
 	side = s
 	max_hp = C.hp
-	rig = Main.make_rig(C)
+	rig = Main.make_rig(C, costume)
 	G.add_child(rig)
 
 

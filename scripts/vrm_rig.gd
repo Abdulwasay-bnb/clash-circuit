@@ -29,15 +29,17 @@ var springs: Array = []           # spring chains (hair, skirts, sleeves): Array
 var colliders: Array = []         # {b, off, r, tail}: spheres / capsules attached to bones
 var last_us := 0
 var last_root := Vector3.INF
+var costume := 0
+var accs: Array = []              # costume accessories: {node, b, off, basis}
 var constraints: Array = []      # VRMC_node_constraint: rotation / roll / aim
 
 
 static func has_model(C: Dictionary) -> bool:
-	return not Models.spec(C.id).is_empty()
+	return not Models.spec(C.id, 0).is_empty()
 
 
 func build(C: Dictionary) -> void:
-	var spec: Dictionary = Models.spec(C.id)
+	var spec: Dictionary = Models.spec(C.id, costume)
 	accent = C.accent
 	proxy = ToonRig.new()
 	proxy.joints_only = true
@@ -49,6 +51,7 @@ func build(C: Dictionary) -> void:
 	_restyle(spec.get("tint", {}))
 	_index_skeleton()
 	_make_fists()
+	_make_accessories(spec.get("acc", []))
 	scale = Vector3.ONE * float(C.scale)
 
 
@@ -429,6 +432,8 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 		skel.set_bone_pose_rotation(b, Ls[b].basis.get_rotation_quaternion())
 		skel.set_bone_pose_position(b, Ls[b].origin)
 	head.position = model.transform * G[bones.head].origin + Vector3(0, 0.06, 0)
+	if not accs.is_empty():
+		_place_accessories(G)
 
 
 ## VRM spring bones (hair, skirts, sleeves), simulated in world space so they react to movement.
@@ -523,6 +528,89 @@ func _constraint_local(c: Dictionary, G: Dictionary, Ls: Dictionary) -> Transfor
 		var tw := Quaternion(proj.x, proj.y, proj.z, delta.w)
 		delta = tw.normalized() if tw.length() > 1e-5 else Quaternion.IDENTITY
 	return Transform3D(rest.basis * Basis(Quaternion.IDENTITY.slerp(delta, w)), rest.origin)
+
+
+# ---------------------------------------------------------------- costume accessories
+const TOON_SHADER := preload("res://shaders/toon.gdshader")
+
+
+## Parts per accessory kind: [humanoid bone, mesh, rest offset (rig space: +Y up, +Z front, +X fighter's left), euler, scale].
+## The VRM rest pose is a T-pose, so arms point along +X (left) / -X (right).
+func _acc_parts(kind: String) -> Array:
+	var tor := func(r: float, th: float) -> TorusMesh:
+		var t := TorusMesh.new(); t.inner_radius = r - th; t.outer_radius = r + th; t.rings = 24; t.ring_segments = 8
+		return t
+	var Z90 := Vector3(0, 0, PI / 2)
+	match kind:
+		"gloves":
+			return [["leftHand", ToonRig.sph(0.075), Vector3(0.06, 0, 0), Vector3.ZERO, Vector3(1.3, 1.0, 1.05)],
+				["rightHand", ToonRig.sph(0.075), Vector3(-0.06, 0, 0), Vector3.ZERO, Vector3(1.3, 1.0, 1.05)],
+				["leftLowerArm", ToonRig.cyl(0.052, 0.05, 0.06), Vector3(0.21, 0, 0), Z90, Vector3.ONE],
+				["rightLowerArm", ToonRig.cyl(0.052, 0.05, 0.06), Vector3(-0.21, 0, 0), Z90, Vector3.ONE]]
+		"wraps":
+			return [["leftLowerArm", ToonRig.cyl(0.046, 0.042, 0.15), Vector3(0.17, 0, 0), Z90, Vector3.ONE],
+				["rightLowerArm", ToonRig.cyl(0.046, 0.042, 0.15), Vector3(-0.17, 0, 0), Z90, Vector3.ONE],
+				["leftHand", ToonRig.cyl(0.044, 0.044, 0.05), Vector3(0.03, 0, 0), Z90, Vector3(1, 1, 1.15)],
+				["rightHand", ToonRig.cyl(0.044, 0.044, 0.05), Vector3(-0.03, 0, 0), Z90, Vector3(1, 1, 1.15)]]
+		"headband":
+			return [["head", tor.call(0.118, 0.012), Vector3(0, 0.095, -0.005), Vector3(-0.2, 0, 0), Vector3(1, 1, 1.08)],
+				["head", ToonRig.box(0.03, 0.17, 0.008), Vector3(0.03, 0.05, -0.13), Vector3(0.55, 0, 0.1), Vector3.ONE],
+				["head", ToonRig.box(0.03, 0.14, 0.008), Vector3(-0.025, 0.06, -0.13), Vector3(0.45, 0, -0.15), Vector3.ONE]]
+		"belt":
+			return [["hips", tor.call(0.13, 0.02), Vector3(0, 0.08, 0), Vector3.ZERO, Vector3(1.08, 1.0, 0.78)]]
+		"sash":
+			return _acc_parts("belt") + [["hips", ToonRig.box(0.06, 0.24, 0.015), Vector3(0.09, -0.07, 0.12), Vector3(0.1, 0, 0.1), Vector3.ONE],
+				["hips", ToonRig.box(0.06, 0.2, 0.015), Vector3(0.15, -0.05, 0.08), Vector3(0.1, 0, 0.25), Vector3.ONE]]
+		"armbands":
+			return [["leftUpperArm", tor.call(0.046, 0.011), Vector3(0.11, 0, 0), Z90, Vector3.ONE],
+				["rightUpperArm", tor.call(0.046, 0.011), Vector3(-0.11, 0, 0), Z90, Vector3.ONE]]
+		"visor":
+			return [["head", ToonRig.box(0.2, 0.04, 0.04), Vector3(0, 0.075, 0.105), Vector3.ZERO, Vector3.ONE]]
+		"kneepads":
+			return [["leftLowerLeg", ToonRig.sph(0.06), Vector3(0, 0.0, 0.05), Vector3.ZERO, Vector3(1, 1, 0.6)],
+				["rightLowerLeg", ToonRig.sph(0.06), Vector3(0, 0.0, 0.05), Vector3.ZERO, Vector3(1, 1, 0.6)]]
+		"shoulders":
+			return [["leftUpperArm", ToonRig.box(0.15, 0.06, 0.17), Vector3(0.03, 0.07, 0), Vector3(0, 0, -0.3), Vector3.ONE],
+				["rightUpperArm", ToonRig.box(0.15, 0.06, 0.17), Vector3(-0.03, 0.07, 0), Vector3(0, 0, 0.3), Vector3.ONE]]
+	return []
+
+
+func _make_accessories(list: Array) -> void:
+	var outline := ShaderMaterial.new()
+	outline.shader = OUTLINE
+	outline.set_shader_parameter("thickness", 0.006)
+	for a in list:
+		var kind: String = a[0]
+		var col: Color = a[1]
+		if kind != "visor":
+			col = col * 0.72   # keep within the texture range of the models so accessories don't bloom
+			col.a = 1.0
+		# Same cel shader as the model so accessories are lit like the clothes they sit on.
+		var m := ShaderMaterial.new()
+		m.shader = _shader("opaque")
+		m.set_shader_parameter("tex", _white())
+		m.set_shader_parameter("albedo", col)
+		m.set_shader_parameter("shade", col.darkened(0.3).lerp(Color(0.55, 0.5, 0.75), 0.4))
+		if kind == "visor":
+			m.set_shader_parameter("emission_strength", 1.1)
+		else:
+			m.next_pass = outline
+		mats.append(m)
+		for part in _acc_parts(kind):
+			if not bones.has(part[0]): continue
+			var mi := MeshInstance3D.new()
+			mi.mesh = part[1]
+			mi.material_override = m
+			add_child(mi)
+			accs.append({node = mi, b = bones[part[0]], off = part[2], basis = Basis.from_euler(part[3]).scaled(part[4])})
+
+
+func _place_accessories(G: Dictionary) -> void:
+	for a in accs:
+		var b: int = a.b
+		var delta: Basis = (G[b].basis * rest_g[b].basis.inverse()).orthonormalized()
+		var pos_s: Vector3 = G[b].origin + delta * (qi * a.off) / k
+		a.node.transform = Transform3D(qb * delta * qi * a.basis, model.transform * pos_s)
 
 
 func set_flash(v: float) -> void:
