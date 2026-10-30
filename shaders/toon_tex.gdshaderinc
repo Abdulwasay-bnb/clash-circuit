@@ -6,9 +6,14 @@ uniform vec4 rim_color : source_color = vec4(0.75, 0.88, 1.0, 1.0);
 uniform float rim_amount = 0.18;
 uniform float flash = 0.0;
 uniform float emission_strength = 0.0;
+uniform float saturation = 1.0;   // per-fighter recolor: 0 = greyscale
+uniform float brightness = 1.0;
 
 void fragment() {
-	vec4 c = texture(tex, UV) * albedo;
+	vec4 c = texture(tex, UV);
+	float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+	c.rgb = mix(vec3(lum), c.rgb, saturation) * brightness;
+	c *= albedo;
 	ALBEDO = c.rgb;
 	#ifdef USE_ALPHA
 	ALPHA = c.a;

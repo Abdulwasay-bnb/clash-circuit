@@ -23,6 +23,8 @@ var face := ""
 var foot_rest := {}               # bone -> rest height
 var arm_axis := {}                # limb -> rest hinge axis
 var accent := Color.WHITE
+var qb := Basis.IDENTITY          # model -> rig rotation (VRM 0.x models face -Z, so they are turned 180°)
+var qi := Basis.IDENTITY
 var constraints: Array = []      # VRMC_node_constraint: rotation / roll / aim
 
 
@@ -60,18 +62,18 @@ func _load(path: String) -> void:
 	# Read the VRM humanoid map and expressions straight from the glTF JSON chunk.
 	var json_len := bytes.decode_u32(12)
 	var j: Dictionary = JSON.parse_string(bytes.slice(20, 20 + json_len).get_string_from_utf8())
-	var vrm: Dictionary = j.extensions.VRMC_vrm
 	var nodes := state.get_nodes()
-	for hb in vrm.humanoid.humanBones:
-		var ni := int(vrm.humanoid.humanBones[hb].node)
-		var bi := skel.find_bone(nodes[ni].resource_name)
-		if bi < 0:
-			bi = skel.find_bone(String(nodes[ni].resource_name).validate_node_name())
-		if bi >= 0:
-			bones[hb] = bi
 	var bone_of := func(ni: int) -> int:
 		var bi := skel.find_bone(nodes[ni].resource_name)
 		return bi if bi >= 0 else skel.find_bone(String(nodes[ni].resource_name).validate_node_name())
+	if not j.extensions.has("VRMC_vrm"):
+		_load_vrm0(j, state, bone_of)
+		return
+	var vrm: Dictionary = j.extensions.VRMC_vrm
+	for hb in vrm.humanoid.humanBones:
+		var bi: int = bone_of.call(int(vrm.humanoid.humanBones[hb].node))
+		if bi >= 0:
+			bones[hb] = bi
 	var axes := {"PositiveX": Vector3.RIGHT, "NegativeX": Vector3.LEFT, "PositiveY": Vector3.UP, "NegativeY": Vector3.DOWN,
 		"PositiveZ": Vector3.BACK, "NegativeZ": Vector3.FORWARD, "X": Vector3.RIGHT, "Y": Vector3.UP, "Z": Vector3.BACK}
 	for ni in j.nodes.size():
@@ -93,6 +95,35 @@ func _load(path: String) -> void:
 				if is_instance_valid(n) and n is MeshInstance3D:
 					binds.append([n, int(b.index), float(b.weight)])
 			expressions[name] = binds
+
+
+## VRM 0.x: humanBones is a list, expressions are "blendShapeGroups", and the model faces -Z.
+func _load_vrm0(j: Dictionary, state: GLTFState, bone_of: Callable) -> void:
+	var vrm: Dictionary = j.extensions.VRM
+	for hb in vrm.humanoid.humanBones:
+		var bi: int = bone_of.call(int(hb.node))
+		if bi >= 0:
+			bones[hb.bone] = bi
+	qb = Basis(Vector3.UP, PI)
+	qi = qb.inverse()
+	model.rotation.y = PI
+	# Map glTF mesh index -> scene MeshInstance3D nodes that use it.
+	var mesh_nodes := {}
+	var gnodes := state.get_nodes()
+	for ni in gnodes.size():
+		if gnodes[ni].mesh >= 0:
+			var n = state.get_scene_node(ni)
+			if is_instance_valid(n) and n is MeshInstance3D:
+				mesh_nodes[gnodes[ni].mesh] = mesh_nodes.get(gnodes[ni].mesh, []) + [n]
+	var rename := {"joy": "happy", "sorrow": "sad", "fun": "surprised", "angry": "angry", "neutral": "neutral"}
+	for g in vrm.get("blendShapeMaster", {}).get("blendShapeGroups", []):
+		var preset: String = String(g.get("presetName", "")).to_lower()
+		if not rename.has(preset): continue
+		var binds: Array = []
+		for b in g.get("binds", []):
+			for n in mesh_nodes.get(int(b.mesh), []):
+				binds.append([n, int(b.index), float(b.weight) / 100.0])
+		expressions[rename[preset]] = binds
 
 
 func _shader(key: String) -> Shader:
@@ -128,10 +159,32 @@ func _restyle(tint: Dictionary) -> void:
 			var key := ("blend" if blend else "scissor" if scissor else "opaque") + ("_nocull" if src.cull_mode == BaseMaterial3D.CULL_DISABLED else "")
 			var m := ShaderMaterial.new()
 			m.shader = _shader(key)
+			var hidden := false
+			for pat in tint:
+				if tint[pat] is String and tint[pat] == "hide" and pat.to_lower() in name.to_lower():
+					hidden = true
+			if hidden:
+				# Remove this clothing piece (e.g. the base model's school tie).
+				var inv := StandardMaterial3D.new()
+				inv.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				inv.albedo_color = Color(0, 0, 0, 0)
+				mi.set_surface_override_material(si, inv)
+				continue
 			var col: Color = src.albedo_color
 			for pat in tint:
+				if tint[pat] is String: continue
 				if pat.to_lower() in name.to_lower():
-					col *= tint[pat]
+					# A tint is a Color, or {c = Color, sat = 0..2, bright = 0..2} for full recolors.
+					var t = tint[pat]
+					if t is Dictionary:
+						# VRoid stores much of its color in the material color, not the texture: recolor both.
+						var sat: float = t.get("sat", 1.0)
+						var l := col.get_luminance()
+						col = Color(l, l, l, col.a).lerp(col, clampf(sat, 0.0, 1.0)) * t.get("c", Color.WHITE)
+						m.set_shader_parameter("saturation", t.get("sat", 1.0))
+						m.set_shader_parameter("brightness", t.get("bright", 1.0))
+					else:
+						col *= t
 			m.set_shader_parameter("albedo", col)
 			m.set_shader_parameter("tex", src.albedo_texture if src.albedo_texture else PlaceholderTexture2D.new())
 			m.set_shader_parameter("shade", col.darkened(0.3).lerp(Color(0.55, 0.5, 0.75), 0.4) if src.albedo_texture == null else Color(0.66, 0.6, 0.8))
@@ -179,7 +232,7 @@ func _index_skeleton() -> void:
 	# Hinge axes in the rest pose: the proxy's limbs hang straight down with the hinge along X.
 	for limb in [["leftUpperArm", "leftLowerArm"], ["rightUpperArm", "rightLowerArm"], ["leftUpperLeg", "leftLowerLeg"], ["rightUpperLeg", "rightLowerLeg"]]:
 		var d := _rest_dir(limb[0], limb[1])
-		arm_axis[limb[0]] = Quaternion(Vector3.DOWN, d) * Vector3.RIGHT
+		arm_axis[limb[0]] = Quaternion(Vector3.DOWN, d) * (qi * Vector3.RIGHT)
 
 
 func _rest_dir(a: String, b: String) -> Vector3:
@@ -202,7 +255,7 @@ func _make_fists() -> void:
 				if finger == "Thumb":
 					# Tuck the thumb across the curled fingers instead of curling it like a finger.
 					ang = 0.85 if seg != "Metacarpal" else 0.5
-					aw = Vector3.RIGHT
+					aw = qi * Vector3.RIGHT
 				var axis_l: Vector3 = (rest_g[b].basis.inverse() * aw).normalized()
 				var t: Transform3D = rest_l[b]
 				t.basis = t.basis * Basis(axis_l, ang)
@@ -233,6 +286,9 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 	var chest_d := hips_d * torso_l
 	var neck_d := chest_d * Basis().slerp(head_l, 0.5)
 	var head_d := chest_d * head_l
+	var toS := func(b: Basis) -> Basis: return qi * b * qb   # rig-space rotation -> skeleton space
+	hips_d = toS.call(hips_d); spine_d = toS.call(spine_d); chest_d = toS.call(chest_d)
+	neck_d = toS.call(neck_d); head_d = toS.call(head_d)
 	var want := {}   # bone -> desired global basis (skeleton space)
 	var put := func(name: String, delta: Basis) -> void:
 		if bones.has(name):
@@ -248,8 +304,8 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 			["leftUpperLeg", "leftLowerLeg", "leftFoot", proxy.l_h, proxy.l_k], ["rightUpperLeg", "rightLowerLeg", "rightFoot", proxy.r_h, proxy.r_k]]:
 		if not (bones.has(L[0]) and bones.has(L[1]) and bones.has(L[2])):
 			continue
-		var up_b := _rel(L[3]).basis
-		var lo_b := _rel(L[4]).basis
+		var up_b := qi * _rel(L[3]).basis
+		var lo_b := qi * _rel(L[4]).basis
 		var hinge := lo_b.x
 		var ax_r: Vector3 = arm_axis[L[0]]
 		var r_up := _frame(-up_b.y, hinge) * _frame(_rest_dir(L[0], L[1]), ax_r).inverse()
@@ -258,7 +314,7 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 		want[bones[L[1]]] = r_lo * rest_g[bones[L[1]]].basis
 		want[bones[L[2]]] = r_lo * rest_g[bones[L[2]]].basis
 	# Hips translation (proxy units -> skeleton units).
-	var hip_pos: Vector3 = rest_g[bones.hips].origin + (hips_t.origin - Vector3(0, 0.95, 0)) / k
+	var hip_pos: Vector3 = rest_g[bones.hips].origin + qi * (hips_t.origin - Vector3(0, 0.95, 0)) / k
 	# Solve once, evaluate constraints from that result, then solve again with them applied.
 	var first := _solve(want, hip_pos, {})
 	var over := {}
@@ -280,7 +336,7 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 		if p[Pose.LIFT] > 0.001:
 			lift = maxf(lift, 0.0)
 	model.position.y = lift
-	head.position = model.position + G[bones.head].origin * k + Vector3(0, 0.06, 0)
+	head.position = model.transform * G[bones.head].origin + Vector3(0, 0.06, 0)
 
 
 ## Walk the hierarchy turning desired global rotations into local poses. Returns [globals, locals].

@@ -5,3 +5,4 @@
 - Fonts: Russo One and Rajdhani, SIL Open Font License.
 - Engine: Godot Engine (MIT).
 - DejaVu Sans Bold (DejaVu Fonts License), symbol fallback for web builds.
+- **Base_Male** by the VRoid Project, CC0 (via OpenGameArt; license embedded in the VRM file).

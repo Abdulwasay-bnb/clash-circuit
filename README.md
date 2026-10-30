@@ -8,7 +8,7 @@
 
 [**▶ Play in your browser**](https://abdulwasay-bnb.github.io/clash-circuit/) · [Roster](#-the-roster) · [How it works](#-under-the-hood) · [Make your own fighter](#-bring-your-own-fighter)
 
-<img src="docs/media/fight.png" alt="VEX-9 vs Ember Cruz mid-fight" width="100%">
+<img src="docs/media/fight.png" alt="Kael Varga vs Tao Ren mid-fight" width="100%">
 
 </div>
 
@@ -128,7 +128,8 @@ Design a character in **VRoid Studio**, export it as **VRM 1.0**, and save it as
 - [x] 8 fighters, 146 moves, frame data, juggles, stances, throws
 - [x] Anime VRM fighters with retargeted animation
 - [x] Combo Trials, smooth animation, web build
-- [ ] Custom VRoid models for the whole roster
+- [x] Anime models for all 8 fighters (shared VRoid bases, restyled per fighter)
+- [ ] Unique VRoid outfits for every fighter
 - [ ] More stages
 - [ ] Android build with touch controls
 - [ ] Online versus
@@ -136,6 +137,7 @@ Design a character in **VRoid Studio**, export it as **VRM 1.0**, and save it as
 ## 📜 Credits
 
 Sample avatars **Seed-san** (© VirtualCast, Inc.) and **VRM1_Constraint_Twist_Sample** (© pixiv Inc.)
-are used under the [VRM Public License 1.0](https://vrm.dev/licenses/1.0/). Fonts: Russo One and
+are used under the [VRM Public License 1.0](https://vrm.dev/licenses/1.0/). **Base_Male** by the VRoid
+Project is CC0. Fonts: Russo One and
 Rajdhani (SIL OFL), DejaVu Sans. Engine: [Godot](https://godotengine.org) (MIT).
 See [`CREDITS.md`](CREDITS.md).
