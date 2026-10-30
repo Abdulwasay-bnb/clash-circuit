@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 GD="$HOME/Applications/godot/Godot_v4.3-stable_linux.x86_64"
 REPO="Abdulwasay-bnb/clash-circuit"
+mkdir -p build && touch build/.gdignore
 "$GD" --headless --path . --export-release "Web" build/web/index.html
 touch build/web/.nojekyll
 tmp=$(mktemp -d)
