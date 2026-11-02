@@ -277,6 +277,7 @@ func _restyle(tint: Dictionary) -> void:
 						col = Color(l, l, l, col.a).lerp(col, clampf(sat, 0.0, 1.0)) * t.get("c", Color.WHITE)
 						m.set_shader_parameter("saturation", t.get("sat", 1.0))
 						m.set_shader_parameter("brightness", t.get("bright", 1.0))
+						if t.has("pat"): _set_pattern(m, t.pat)
 					else:
 						col *= t
 			m.set_shader_parameter("albedo", col)
@@ -291,6 +292,18 @@ func _restyle(tint: Dictionary) -> void:
 				m.set_shader_parameter("tex", _white())
 			mi.set_surface_override_material(si, m)
 			mats.append(m)
+
+
+const PATTERNS := ["none", "plaid", "camo", "flames", "bands", "pinstripes", "diagonal", "dots", "grid", "scales", "gradient"]
+
+
+## pat = {kind = "plaid", a = Color, b = Color (optional), scale = 1.0, o = 0.5}; see toon_tex.gdshaderinc
+static func _set_pattern(m: ShaderMaterial, pat: Dictionary) -> void:
+	m.set_shader_parameter("pattern", maxi(0, PATTERNS.find(pat.get("kind", "none"))))
+	m.set_shader_parameter("pat_a", pat.get("a", Color.WHITE))
+	m.set_shader_parameter("pat_b", pat.get("b", Color(0, 0, 0, 0)))
+	m.set_shader_parameter("pat_scale", pat.get("scale", 1.0))
+	m.set_shader_parameter("pat_o", pat.get("o", 0.5))
 
 
 static var _white_tex: ImageTexture

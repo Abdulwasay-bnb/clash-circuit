@@ -7,6 +7,7 @@ const ARENA_R := 7.4
 const ADDITIVE := preload("res://shaders/additive.gdshader")
 
 const INTRO_FRAMES := 200   # match-start animation, then "FIGHT!" at 45 frames left
+var loader: LoadingScreen
 var ui: GameUI
 var camera: Camera3D
 var mode := ""
@@ -61,8 +62,12 @@ static func make_rig(C: Dictionary, costume := 0) -> Node3D:
 
 
 func _ready() -> void:
+	loader = LoadingScreen.new()
+	add_child(loader)
+	loader.open("LOADING")
+	await get_tree().process_frame
 	Data.load_all()
-	ClipLib.load_all()
+	await ClipLib.load_all_async(get_tree(), func(f): loader.progress("LOADING MOVES", f * 0.7))
 	_setup_input_map()
 	if OS.has_feature("mobile"):
 		# Phones: lighter shadows, no MSAA, slightly reduced 3D resolution (UI stays sharp).
@@ -81,6 +86,7 @@ func _ready() -> void:
 	add_child(ui)
 	ui.build()
 	portraits = await _make_portraits()
+	loader.close()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--autotest="):
 			autotest = a.substr(11)
@@ -254,6 +260,7 @@ func _make_portraits() -> Dictionary:
 	env.environment.background_mode = Environment.BG_CLEAR_COLOR
 	vp.add_child(env)
 	for C in Data.ROSTER:
+		if loader: loader.progress("PREPARING FIGHTERS", 0.7 + 0.3 * float(Data.ROSTER.find(C)) / Data.ROSTER.size())
 		var rig := make_rig(C)
 		vp.add_child(rig)
 		rig.apply_pose(C.pose.guard)
@@ -347,13 +354,22 @@ func _dummy_think() -> Array:
 
 # ------------------------------------------------------------------ match flow
 func start_match(c: Dictionary, p: Array) -> void:
+	loader.open("LOADING FIGHT")
+	await get_tree().process_frame
+	await get_tree().process_frame
 	clear_preview()
 	for f in F:
 		f.rig.queue_free()
+	F = []   # nothing ticks or renders while the new fight loads
 	cfg = c; picks = p; mode = c.mode
 	set_stage(c.get("stage", Stage.LIST.pick_random().id))
 	var cos: Array = c.get("costumes", [0, 0])
-	F = [Fighter.new(self, p[0], 0, cos[0]), Fighter.new(self, p[1], 1, cos[1])]
+	loader.progress("LOADING " + String(p[0].name).to_upper(), 0.3)
+	await get_tree().process_frame
+	var f0 := Fighter.new(self, p[0], 0, cos[0])
+	loader.progress("LOADING " + String(p[1].name).to_upper(), 0.65)
+	await get_tree().process_frame
+	F = [f0, Fighter.new(self, p[1], 1, cos[1])]
 	inputs = [InputBuf.new(), InputBuf.new()]
 	ai = [null, FighterAI.new(self, c.lv) if mode == "cpu" else null]
 	wins = [0, 0]; round_n = 1; frame = 0; dummy = 0; fd = null; paused = false
@@ -362,6 +378,7 @@ func start_match(c: Dictionary, p: Array) -> void:
 	ui.hide_screen()
 	ui.show_hud(self)
 	start_round()
+	loader.close()
 
 
 func start_round() -> void:
@@ -656,6 +673,7 @@ func reset_training() -> void:
 # ------------------------------------------------------------------ per-frame visuals
 func _process(dt: float) -> void:
 	t_now += dt
+	if ui == null: return   # still on the startup loader
 	if not F.is_empty():
 		for f in F:
 			f.render(t_now)
@@ -781,7 +799,7 @@ func _run_autotest() -> void:
 			var st := "neon"
 			for a in OS.get_cmdline_user_args():
 				if a.begins_with("--stage="): st = a.substr(8)
-			start_match({mode = "cpu", lv = 2, stage = st}, [Data.by_id(ids[0]), Data.by_id(ids[1])])
+			await start_match({mode = "cpu", lv = 2, stage = st}, [Data.by_id(ids[0]), Data.by_id(ids[1])])
 			ai[0] = FighterAI.new(self, 2)
 			await get_tree().create_timer(6.0).timeout
 			await shot.call("fight")
@@ -791,7 +809,7 @@ func _run_autotest() -> void:
 				F[0].render(t_now); F[1].render(t_now)
 			print("AUTOTEST pose cost per frame (both fighters): %.2f ms" % ((Time.get_ticks_usec() - t0) / 100000.0))
 		"moves":
-			start_match({mode = "training"}, [Data.by_id("kael"), Data.by_id("bastion")])
+			await start_match({mode = "training"}, [Data.by_id("kael"), Data.by_id("bastion")])
 			await get_tree().create_timer(0.3).timeout
 			ui.show_pause(); ui.show_moves(0)
 			await get_tree().create_timer(0.5).timeout
@@ -833,7 +851,7 @@ func _run_autotest() -> void:
 			await shot.call("closeup")
 		"trials":
 			for id in ["kael", "bastion", "mara", "vex", "sora"]:
-				start_match({mode = "training"}, [Data.by_id(id), Data.by_id("bastion")])
+				await start_match({mode = "training"}, [Data.by_id(id), Data.by_id("bastion")])
 				F[0].reset(-0.55); F[1].reset(0.55)
 				for t in trials.size():
 					print("AUTOTEST trials ", id, " #", t, " ", trials[t].name, " ", trials[t].keys)
@@ -868,7 +886,7 @@ func _run_autotest() -> void:
 				if id == "bastion": print("AUTOTEST TRACE ", " ; ".join(trace))
 				print("AUTOTEST juggle %-8s keys=%s cleared=%s max_hits=%d" % [id, keys, trial_done.get(trial_i, false), best])
 		"springs":
-			start_match({mode = "cpu", lv = 2}, [Data.by_id("vex"), Data.by_id("ember")])
+			await start_match({mode = "cpu", lv = 2}, [Data.by_id("vex"), Data.by_id("ember")])
 			ai[0] = FighterAI.new(self, 2)
 			var stats := {}
 			for f in 300:
@@ -900,7 +918,7 @@ func _run_autotest() -> void:
 			await shot.call("fight")
 		"trade":
 			for setup in [["throw vs jab", "12", "1", 2], ["jab vs throw", "1", "12", -2], ["throw vs throw", "12", "12", 0]]:
-				start_match({mode = "training"}, [Data.by_id("tao"), Data.by_id("lio")])
+				await start_match({mode = "training"}, [Data.by_id("tao"), Data.by_id("lio")])
 				dummy = 0
 				F[0].reset(-0.5); F[1].reset(0.5)
 				for i in 5: await get_tree().physics_frame
@@ -920,7 +938,7 @@ func _run_autotest() -> void:
 					if i % 30 == 29: states.append("%s/%s" % [F[0].state, F[1].state])
 				print("AUTOTEST trade %-15s -> %s  final ok=%s" % [setup[0], " ".join(states), str(not (F[0].state in ["thrown", "throwing"] or F[1].state in ["thrown", "throwing"]))])
 		"touch":
-			start_match({mode = "training", stage = "neon"}, [Data.by_id("kael"), Data.by_id("bastion")])
+			await start_match({mode = "training", stage = "neon"}, [Data.by_id("kael"), Data.by_id("bastion")])
 			for i in 30: await get_tree().physics_frame
 			var t: TouchControls = ui.touch
 			var vp := get_viewport()
@@ -950,7 +968,7 @@ func _run_autotest() -> void:
 				if F[0].move != null: seen = F[0].move.key
 			print("AUTOTEST touch button 1 -> move %s" % seen)
 		"dpad":
-			start_match({mode = "training", stage = "neon"}, [Data.by_id("sora"), Data.by_id("bastion")])
+			await start_match({mode = "training", stage = "neon"}, [Data.by_id("sora"), Data.by_id("bastion")])
 			for i in 30: await get_tree().physics_frame
 			var t: TouchControls = ui.touch
 			var ev := func(cls, idx: int, pos: Vector2, pressed := true):
@@ -1000,7 +1018,7 @@ func _run_autotest() -> void:
 		"combat":
 			await _combat_checks()
 		"string":
-			start_match({mode = "training"}, [Data.by_id("mara"), Data.by_id("bastion")])
+			await start_match({mode = "training"}, [Data.by_id("mara"), Data.by_id("bastion")])
 			F[0].reset(-0.55); F[1].reset(0.55)
 			for i in 10: await get_tree().physics_frame
 			var plan := {0: KEY_U, 8: KEY_I, 17: KEY_U}
@@ -1035,7 +1053,7 @@ func _combat_checks() -> void:
 		["mara", 0, [[[KEY_U], 4], [[], 4], [[KEY_I], 4], [[], 5], [[KEY_U], 4]], "1,2,1 string"],
 	]
 	for c in cases:
-		start_match({mode = "training"}, [Data.by_id(c[0]), Data.by_id("bastion")])
+		await start_match({mode = "training"}, [Data.by_id(c[0]), Data.by_id("bastion")])
 		dummy = c[1]
 		F[0].reset(-0.55); F[1].reset(0.55)
 		for i in 10: await get_tree().physics_frame

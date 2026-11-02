@@ -63,17 +63,37 @@ static func get_clip(name: String) -> Clip:
 
 
 static func load_all() -> void:
-	if loaded: return
+	for f in _files():
+		_load_one(f)
 	loaded = true
+
+
+## Same as load_all, one clip per frame; on_progress(fraction) after each.
+static func load_all_async(tree: SceneTree, on_progress: Callable) -> void:
+	var files := _files()
+	for i in files.size():
+		_load_one(files[i])
+		on_progress.call(float(i + 1) / files.size())
+		await tree.process_frame
+	loaded = true
+
+
+static func _files() -> Array:
+	var out := []
 	var d := DirAccess.open(DIR)
-	if d == null: return
+	if d == null: return out
 	for f in d.get_files():
 		# exported builds list "x.fbx.import" instead of the source file
 		var file := f.trim_suffix(".import")
-		if not file.ends_with(".fbx") or clips.has(file.get_basename()): continue
-		var c := _bake(DIR + file)
-		if c != null:
-			clips[c.name] = c
+		if file.ends_with(".fbx") and not out.has(file): out.append(file)
+	return out
+
+
+static func _load_one(file: String) -> void:
+	if clips.has(file.get_basename()): return
+	var c := _bake(DIR + file)
+	if c != null:
+		clips[c.name] = c
 
 
 const EFFECTORS := {"lh": "LeftHand", "rh": "RightHand", "le": "LeftForeArm", "re": "RightForeArm",

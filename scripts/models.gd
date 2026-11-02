@@ -26,7 +26,18 @@ static func spec(id: String, costume := 0) -> Dictionary:
 	var own := "res://characters/%s/model.vrm" % id
 	if FileAccess.file_exists(own):
 		return {file = own, tint = {}, acc = cs.get("acc", [])}
-	return {file = e.file, tint = cs.get("tint", {}), acc = cs.get("acc", [])}
+	return {file = e.file, tint = _with_prints(cs.get("tint", {}), PRINTS.get(id, [])[costume] if costume < PRINTS.get(id, []).size() else {}), acc = cs.get("acc", [])}
+
+
+## Merge a costume's prints into its tints (a plain Color tint becomes {c = Color} so it can carry a pattern).
+static func _with_prints(tint: Dictionary, prints: Dictionary) -> Dictionary:
+	var out := tint.duplicate()
+	for part in prints:
+		var t = out.get(part, {})
+		var d: Dictionary = (t as Dictionary).duplicate() if t is Dictionary else {c = t if t is Color else Color.WHITE}
+		d.pat = prints[part]
+		out[part] = d
+	return out
 
 
 static func costume_names(id: String) -> Array:
@@ -35,6 +46,54 @@ static func costume_names(id: String) -> Array:
 
 static func skin(c: Color) -> Dictionary:
 	return {"Body_00_SKIN": c, "Face_00_SKIN": c}
+
+
+## Costume prints per fighter, in costume order: material-name substring -> pattern (see VrmRig._set_pattern).
+const PRINTS := {
+	"vex": [
+		{"huku": {kind = "grid", a = Color(0.2, 0.75, 0.95), b = Color(0.5, 1.0, 1.0), scale = 1.2}},
+		{"huku": {kind = "grid", a = Color(0.55, 0.12, 0.15), b = Color(1.0, 0.35, 0.3), scale = 1.2}},
+		{"huku": {kind = "camo", a = Color(0.2, 0.21, 0.24), b = Color(0.45, 0.47, 0.5), scale = 1.0}},
+	],
+	"sora": [
+		{"Bottoms": {kind = "gradient", a = Color(0.08, 0.08, 0.12), o = 0.25}},
+		{"Tops": {kind = "camo", a = Color(0.32, 0.34, 0.38), b = Color(0.8, 0.82, 0.86), scale = 1.0}},
+		{"Tops": {kind = "diagonal", a = Color(0.82, 0.76, 0.74), b = Color(0.9, 0.7, 0.2), scale = 1.0}},
+	],
+	"ember": [
+		{"Bottoms": {kind = "flames", a = Color(1.0, 0.45, 0.1), b = Color(1.0, 0.85, 0.3), o = 0.12},
+			"Tops": {kind = "diagonal", a = Color(1.0, 0.75, 0.2), b = Color(0.35, 0.1, 0.55), scale = 0.8}},
+		{"Tops": {kind = "scales", a = Color(0.35, 0.05, 0.02), b = Color(1.0, 0.45, 0.15), scale = 1.0},
+			"Bottoms": {kind = "flames", a = Color(1.0, 0.35, 0.1), b = Color(1.0, 0.8, 0.25), o = 0.12}},
+		{"Tops": {kind = "dots", a = Color(1.0, 0.82, 0.35), scale = 1.0}},
+	],
+	"mara": [
+		{"Bottoms": {kind = "bands", a = Color(1.0, 1.0, 1.0), b = Color(1.0, 0.8, 0.25), o = 0.0, scale = 1.0}},
+		{"Tops": {kind = "pinstripes", a = Color(1.0, 0.8, 0.3), scale = 1.0}},
+		{"Tops": {kind = "camo", a = Color(0.5, 0.52, 0.56), b = Color(0.9, 0.9, 0.92), scale = 1.0}},
+	],
+	"bastion": [
+		{"Tops": {kind = "plaid", a = Color(0.12, 0.05, 0.05), b = Color(0.95, 0.75, 0.3), scale = 1.0}},
+		{"Tops": {kind = "bands", a = Color(0.85, 0.88, 0.9), b = Color(0.2, 0.2, 0.2), o = 0.05, scale = 0.6}},
+		{"Bottoms": {kind = "camo", a = Color(0.26, 0.28, 0.33), b = Color(0.42, 0.45, 0.52), scale = 1.0}},
+	],
+	"lio": [
+		{"Tops": {kind = "gradient", a = Color(1.0, 0.85, 0.2), o = 0.75}},
+		{"Tops": {kind = "diagonal", a = Color(0.25, 0.45, 1.0), b = Color(1.0, 1.0, 1.0), scale = 0.8},
+			"Bottoms": {kind = "dots", a = Color(1.0, 0.85, 0.2), scale = 1.0}},
+		{},
+	],
+	"tao": [
+		{"Tops": {kind = "scales", a = Color(0.95, 0.72, 0.25), b = Color(0.6, 0.08, 0.06), scale = 1.0}},
+		{"Tops": {kind = "scales", a = Color(0.08, 0.3, 0.2), b = Color(0.25, 0.75, 0.5), scale = 1.0}},
+		{"Tops": {kind = "gradient", a = Color(0.85, 0.85, 0.85), o = 0.68}},
+	],
+	"kael": [
+		{"Bottoms": {kind = "pinstripes", a = Color(1.0, 1.0, 1.0), scale = 0.6}},
+		{"Bottoms": {kind = "scales", a = Color(0.65, 0.42, 0.08), b = Color(1.0, 0.85, 0.35), scale = 1.0}},
+		{"Tops": {kind = "camo", a = Color(0.95, 0.5, 0.08), b = Color(0.7, 0.32, 0.05), scale = 1.4}},
+	],
+}
 
 
 static var LIST := {
@@ -47,30 +106,30 @@ static var LIST := {
 	]},
 	"sora": {file = GIRL, costumes = [
 		{name = "Dobok", tint = {
-			"Tops": {c = Color(0.92, 0.93, 0.96), sat = 0.0, bright = 0.92}, "Bottoms": Color(0.3, 0.33, 0.75),
-			"Hair": {c = Color(0.22, 0.22, 0.28), sat = 0.2, bright = 0.55}, "Shoes": {c = Color(0.92, 0.92, 0.94), sat = 0.0, bright = 0.95}},
+			"Tops": {c = Color(0.92, 0.93, 0.96), sat = 0.0, bright = 0.74}, "Bottoms": Color(0.3, 0.33, 0.75),
+			"Hair": {c = Color(0.22, 0.22, 0.28), sat = 0.2, bright = 0.55}, "Shoes": {c = Color(0.92, 0.92, 0.94), sat = 0.0, bright = 0.95}}.merged(skin(Color(0.86, 0.72, 0.64))),
 			acc = [["headband", Color(0.45, 0.95, 0.6)], ["belt", Color(0.08, 0.08, 0.1)]]},
 		{name = "Street", tint = {
 			"Tops": {c = Color(0.55, 0.57, 0.62), sat = 0.0, bright = 0.75}, "Bottoms": Color(0.35, 0.45, 0.7),
-			"Hair": {c = Color(0.55, 0.35, 0.25), sat = 0.6, bright = 0.7}, "Shoes": Color(1.0, 0.4, 0.4)},
+			"Hair": {c = Color(0.55, 0.35, 0.25), sat = 0.6, bright = 0.7}, "Shoes": Color(1.0, 0.4, 0.4)}.merged(skin(Color(0.86, 0.72, 0.64))),
 			acc = [["wraps", Color(0.95, 0.95, 0.95)]]},
 		{name = "Champion", tint = {
 			"Tops": Color(1.0, 0.3, 0.3), "Bottoms": {c = Color(0.25, 0.25, 0.28), sat = 0.0, bright = 0.5},
-			"Hair": {c = Color(0.22, 0.22, 0.28), sat = 0.2, bright = 0.55}},
+			"Hair": {c = Color(0.22, 0.22, 0.28), sat = 0.2, bright = 0.55}}.merged(skin(Color(0.86, 0.72, 0.64))),
 			acc = [["headband", Color(1.0, 0.25, 0.25)], ["belt", Color(1.0, 0.8, 0.25)]]},
 	]},
 	"ember": {file = GIRL, costumes = [
 		{name = "Luchadora", tint = {
 			"Tops": Color(0.7, 0.3, 1.0), "Bottoms": Color(0.55, 0.22, 0.85),
-			"Hair": {c = Color(1.0, 0.42, 0.25), sat = 1.6, bright = 1.3}, "Shoes": Color(1.0, 0.82, 0.3)},
+			"Hair": {c = Color(1.0, 0.42, 0.25), sat = 1.6, bright = 1.3}, "Shoes": Color(1.0, 0.82, 0.3)}.merged(skin(Color(0.8, 0.62, 0.5))),
 			acc = [["belt", Color(1.0, 0.75, 0.2)], ["wraps", Color(1.0, 0.55, 0.15)], ["kneepads", Color(0.55, 0.2, 0.85)]]},
 		{name = "Inferno", tint = {
 			"Tops": Color(1.0, 0.3, 0.18), "Bottoms": {c = Color(0.2, 0.2, 0.22), sat = 0.0, bright = 0.45},
-			"Hair": {c = Color(1.0, 0.85, 0.35), sat = 1.2, bright = 1.2}, "Shoes": {c = Color(0.2, 0.2, 0.2), sat = 0.0, bright = 0.4}},
+			"Hair": {c = Color(1.0, 0.85, 0.35), sat = 1.2, bright = 1.2}, "Shoes": {c = Color(0.2, 0.2, 0.2), sat = 0.0, bright = 0.4}}.merged(skin(Color(0.8, 0.62, 0.5))),
 			acc = [["belt", Color(0.15, 0.15, 0.15)], ["wraps", Color(1.0, 0.35, 0.15)], ["kneepads", Color(1.0, 0.35, 0.15)]]},
 		{name = "Gala", tint = {
-			"Tops": {c = Color(0.95, 0.95, 1.0), sat = 0.0, bright = 0.9}, "Bottoms": {c = Color(0.95, 0.95, 1.0), sat = 0.0, bright = 0.85},
-			"Hair": {c = Color(1.0, 0.42, 0.25), sat = 1.6, bright = 1.3}, "Shoes": Color(1.0, 0.82, 0.3)},
+			"Tops": {c = Color(0.95, 0.95, 1.0), sat = 0.0, bright = 0.72}, "Bottoms": {c = Color(0.95, 0.95, 1.0), sat = 0.0, bright = 0.85},
+			"Hair": {c = Color(1.0, 0.42, 0.25), sat = 1.6, bright = 1.3}, "Shoes": Color(1.0, 0.82, 0.3)}.merged(skin(Color(0.8, 0.62, 0.5))),
 			acc = [["belt", Color(1.0, 0.8, 0.3)], ["sash", Color(1.0, 0.8, 0.3)]]},
 	]},
 	"mara": {file = GIRL, costumes = [
