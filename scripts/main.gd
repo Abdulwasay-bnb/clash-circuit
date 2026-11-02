@@ -61,6 +61,7 @@ static func make_rig(C: Dictionary, costume := 0) -> Node3D:
 
 func _ready() -> void:
 	Data.load_all()
+	ClipLib.load_all()
 	_setup_input_map()
 	if OS.has_feature("mobile"):
 		# Phones: lighter shadows, no MSAA, slightly reduced 3D resolution (UI stays sharp).
@@ -716,6 +717,8 @@ func _menu_camera() -> void:
 		var q: PackedFloat32Array = pv.disp.duplicate()
 		if not pv.win:
 			Idle.apply(pv.C.id, q, t_now + i * 0.9)
+		var ic := "" if pv.win else Fighter.idle_clip(pv.C.id)
+		r.set_clip(ic, fmod(t_now + i * 0.7, Fighter._len(ic)) if ic != "" else 0.0)
 		r.apply_pose(q)
 
 
@@ -803,11 +806,22 @@ func _run_autotest() -> void:
 				if a.begins_with("--costume="): cos = int(a.substr(10))
 			var rig := make_rig(C, cos)
 			add_child(rig)
+			var clip := ""
+			var ct := 0.0
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--clip="): clip = a.substr(7)
+				if a.begins_with("--ct="): ct = float(a.substr(5))
+			if clip != "":
+				print("AUTOTEST clips loaded: ", ClipLib.clips.size(), " ", ", ".join(ClipLib.clips.keys().map(func(k): return "%s(%.1fs)" % [k, ClipLib.get_clip(k).length])))
+				for i in 8:
+					rig.set_clip(clip, ct * ClipLib.get_clip(clip).length)
+					rig.apply_pose(C.pose.guard, clip != "knockdown")
 			var p: PackedFloat32Array = C.pose.guard
 			if mv != "":
 				var m: Data.Move = C.moves[mv]
 				p = m.track[m.track.size() - 1][1]
-			rig.apply_pose(p)
+			if clip == "":
+				rig.apply_pose(p)
 			rig.rotation.y = 0.5
 			ui.hide_screen()
 			set_process(false)

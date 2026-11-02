@@ -135,6 +135,17 @@ To install, copy the APK to the phone and open it (allow installs from this sour
 `adb install -r build/android/ClashCircuit.apk`. The build is debug-signed for testing. Publishing on
 Google Play needs a release keystore.
 
+## 🎞️ Mixamo animations
+
+Clips from [Mixamo](https://www.mixamo.com) are retargeted onto the anime fighters at runtime
+(`scripts/clip_lib.gd`). Mixamo's Y Bot and the VRM models both rest in a T-pose, so each bone's
+motion transfers as a global rotation delta. The clips cover fighting idles, footwork, sidesteps,
+blocks, hit reactions, knockdowns, get-ups, KO and throws, and they crossfade with the keyframed attacks.
+
+Mixamo's terms don't allow redistributing the raw files, so `characters/_anims/` is not in this repo.
+To build locally, download the clips (see [`MIXAMO_PROMPT.md`](MIXAMO_PROMPT.md)) and save them as
+`characters/_anims/<slot>.fbx`. Any state without a clip falls back to the keyframed animation.
+
 ## 🎨 Bring your own fighter
 
 Design a character in **VRoid Studio**, export it as **VRM 1.0**, and save it as

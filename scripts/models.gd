@@ -39,7 +39,7 @@ static func skin(c: Color) -> Dictionary:
 
 static var LIST := {
 	"vex": {file = SEED, costumes = [
-		{name = "Prototype", tint = {}, acc = [["visor", Color(0.18, 0.9, 1.0)]]},
+		{name = "Prototype", tint = {"huku": {c = Color(0.95, 0.97, 1.0), sat = 1.0, bright = 0.78}}, acc = [["visor", Color(0.18, 0.9, 1.0)]]},
 		{name = "Crimson Unit", tint = {"hair": {c = Color(0.9, 0.25, 0.3), sat = 0.0, bright = 1.0}, "huku": {c = Color(0.85, 0.38, 0.4), sat = 0.0, bright = 0.75}, "green_emit": Color(1.0, 0.3, 0.3)},
 			acc = [["visor", Color(1.0, 0.25, 0.3)], ["shoulders", Color(0.25, 0.08, 0.1)]]},
 		{name = "Stealth", tint = {"huku": {c = Color(0.35, 0.37, 0.42), sat = 0.0, bright = 0.6}, "hair": {c = Color(0.85, 0.85, 0.9), sat = 0.0, bright = 1.2}},

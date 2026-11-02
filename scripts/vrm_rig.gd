@@ -30,6 +30,15 @@ var colliders: Array = []         # {b, off, r, tail}: spheres / capsules attach
 var last_us := 0
 var last_root := Vector3.INF
 var costume := 0
+# Mixamo clip layer (see ClipLib): current + previous clip for crossfades, and blend weight vs. keyframed poses
+var clip_name := ""
+var clip_t := 0.0
+var clip_hip := true
+var prev_name := ""
+var prev_t := 0.0
+var fade := 1.0
+var clip_w := 0.0
+var clip_target := 0.0
 var accs: Array = []              # costume accessories: {node, b, off, basis}
 var constraints: Array = []      # VRMC_node_constraint: rotation / roll / aim
 
@@ -408,6 +417,10 @@ func apply_pose(p: PackedFloat32Array, ground := true) -> void:
 		want[bones[L[2]]] = r_lo * rest_g[bones[L[2]]].basis
 	# Hips translation (proxy units -> skeleton units).
 	var hip_pos: Vector3 = rest_g[bones.hips].origin + qi * (hips_t.origin - Vector3(0, 0.95, 0)) / k
+	clip_w = move_toward(clip_w, clip_target, 0.2)
+	fade = minf(1.0, fade + 0.2)
+	if clip_w > 0.001 and clip_name != "":
+		hip_pos = _blend_clip(want, hip_pos)
 	# Solve once, evaluate constraints from that result, then solve again with them applied.
 	var first := _solve(want, hip_pos, {})
 	var over := {}
@@ -611,6 +624,54 @@ func _place_accessories(G: Dictionary) -> void:
 		var delta: Basis = (G[b].basis * rest_g[b].basis.inverse()).orthonormalized()
 		var pos_s: Vector3 = G[b].origin + delta * (qi * a.off) / k
 		a.node.transform = Transform3D(qb * delta * qi * a.basis, model.transform * pos_s)
+
+
+# ---------------------------------------------------------------- Mixamo clip layer
+## Request a clip for this frame ("" = keyframed poses only). t is the time into the clip in seconds.
+func set_clip(name: String, t: float, use_hip := true) -> void:
+	if name == "" or not ClipLib.has(name):
+		clip_target = 0.0
+		return
+	clip_target = 1.0
+	if name != clip_name:
+		if clip_name != "" and clip_w > 0.01:
+			prev_name = clip_name
+			prev_t = clip_t
+			fade = 0.0
+		clip_name = name
+	clip_t = t
+	clip_hip = use_hip
+
+
+func _clip_sample() -> Array:
+	var cur: ClipLib.Clip = ClipLib.get_clip(clip_name)
+	if cur == null: return [{}, Vector3.ZERO]
+	var s := cur.sample(clip_t)
+	if fade < 1.0 and prev_name != "":
+		var pc: ClipLib.Clip = ClipLib.get_clip(prev_name)
+		if pc != null:
+			var ps := pc.sample(prev_t)
+			var mix := {}
+			for kk in s[0]:
+				mix[kk] = (ps[0][kk] as Quaternion).slerp(s[0][kk], fade) if ps[0].has(kk) else s[0][kk]
+			s = [mix, (ps[1] as Vector3).lerp(s[1], fade)]
+	return s
+
+
+## Blend the clip's bone rotations into the desired globals; returns the blended hip position.
+func _blend_clip(want: Dictionary, hip_pos: Vector3) -> Vector3:
+	var s := _clip_sample()
+	for hn in s[0]:
+		if not bones.has(hn): continue
+		var b: int = bones[hn]
+		var target: Basis = (qi * Basis(s[0][hn]) * qb * rest_g[b].basis).orthonormalized()
+		var from_q: Quaternion = Quaternion(want[b].orthonormalized()) if want.has(b) else rest_g[b].basis.get_rotation_quaternion()
+		want[b] = Basis(from_q.slerp(Quaternion(target), clip_w))
+	if not clip_hip:
+		return hip_pos
+	var hy: float = rest_g[bones.hips].origin.y
+	var clip_pos: Vector3 = rest_g[bones.hips].origin + qi * Vector3(0, s[1].y * hy, 0)
+	return hip_pos.lerp(clip_pos, clip_w)
 
 
 func set_flash(v: float) -> void:

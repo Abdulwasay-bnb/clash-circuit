@@ -61,6 +61,8 @@ var prev_disp := Pose.zero()          # last tick's pose / position for render i
 var prev_pos := Vector3.ZERO
 var prev_face := 0.0
 var bounced := false
+var anim_t := 0.0        # running time for looping clips
+var last_rt := -1.0
 
 
 func _init(game, ch: Dictionary, s: int, costume := 0) -> void:
@@ -536,7 +538,59 @@ func tick_pose() -> void:
 	flash *= 0.82
 
 
+static func idle_clip(id: String) -> String:
+	if id == "lio": return ""    # capoeira ginga stays procedural
+	return {"mara": "idle_bounce", "kael": "idle_bounce", "sora": "idle_bounce", "bastion": "idle_fight_b", "tao": "idle_fight_b"}.get(id, "idle_fight")
+
+
+static func _len(n: String) -> float:
+	var c: ClipLib.Clip = ClipLib.get_clip(n)
+	return c.length if c != null else 1.0
+
+
+## Which Mixamo clip (and time) fits the current state; "" keeps the keyframed poses.
+func clip_request() -> Array:
+	match state:
+		"idle":
+			var n := idle_clip(C.id)
+			return [n, fmod(anim_t, _len(n))]
+		"walkf":
+			return ["step_forward", fmod(anim_t * 1.3 * C.speed, _len("step_forward"))]
+		"walkb":
+			return ["step_back", fmod(anim_t * 1.3 * C.speed, _len("step_back"))]
+		"dash":
+			return ["step_long", minf(sf / 14.0, 1.0) * _len("step_long")]
+		"bdash":
+			return ["step_back_b", minf(sf / 18.0, 1.0) * _len("step_back_b")]
+		"side":
+			var n := "strafe_left" if side_dir * (1 if side == 0 else -1) > 0 else "strafe_right"
+			return [n, minf(sf / 16.0, 1.0) * _len(n)]
+		"block":
+			if crouch_block: return ["", 0.0]
+			return ["block", minf(sf / 20.0, 1.0) * _len("block") * 0.45]
+		"hit":
+			if hit_crouch: return ["", 0.0]
+			var n := "hit_heavy" if stun > 26 else ("hit_body" if hit_lvl != "high" else ("hit_head" if combo_hits % 2 == 1 else "hit_head_side"))
+			return [n, minf(float(sf) / maxf(1.0, stun), 1.0) * _len(n) * 0.65]
+		"down":
+			return ["knockdown", lerpf(0.72, 1.0, minf(sf / 12.0, 1.0)) * _len("knockdown")]
+		"ko":
+			return ["ko", lerpf(0.78, 1.0, minf(sf / 20.0, 1.0)) * _len("ko")]
+		"getup":
+			return ["getup_quick", minf(sf / 22.0, 1.0) * _len("getup_quick")]
+		"throwing":
+			return ["throw", minf(sf / 60.0, 1.0) * _len("throw")]
+		"thrown":
+			return ["thrown", minf(sf / 60.0, 1.0) * _len("thrown")]
+	return ["", 0.0]
+
+
 func render(t: float) -> void:
+	if last_rt < 0.0: last_rt = t
+	anim_t += clampf(t - last_rt, 0.0, 0.1)
+	last_rt = t
+	var cr := clip_request()
+	rig.set_clip(cr[0], cr[1], state != "thrown")
 	var a := Engine.get_physics_interpolation_fraction()
 	var p := Pose.lerp_p(prev_disp, disp, a)
 	rig.position = prev_pos.lerp(pos, a)

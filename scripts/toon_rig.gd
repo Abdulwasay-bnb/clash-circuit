@@ -300,6 +300,10 @@ func set_face(_name: String) -> void:
 	pass
 
 
+func set_clip(_name: String, _t: float, _use_hip := true) -> void:
+	pass   # procedural fighters don't use Mixamo clips
+
+
 func _spike(r: float, h: float) -> CylinderMesh:
 	var c := CylinderMesh.new(); c.top_radius = 0.0; c.bottom_radius = r; c.height = h; c.radial_segments = 6
 	return c
