@@ -933,6 +933,38 @@ func _run_autotest() -> void:
 				await get_tree().physics_frame
 				if F[0].move != null: seen = F[0].move.key
 			print("AUTOTEST touch button 1 -> move %s" % seen)
+		"dpad":
+			start_match({mode = "training", stage = "neon"}, [Data.by_id("sora"), Data.by_id("bastion")])
+			for i in 30: await get_tree().physics_frame
+			var t: TouchControls = ui.touch
+			var ev := func(cls, idx: int, pos: Vector2, pressed := true):
+				var e = cls.new()
+				e.index = idx; e.position = pos
+				if cls == InputEventScreenTouch: e.pressed = pressed
+				Input.parse_input_event(e)
+			# stick mode: tap the ▲ button -> sidestep
+			t.set_mode("stick")
+			for i in 3: await get_tree().physics_frame
+			ev.call(InputEventScreenTouch, 0, t.vbuttons[0].center)
+			var seen := []
+			for i in 6:
+				await get_tree().physics_frame
+				if not F[0].state in seen: seen.append(F[0].state)
+			ev.call(InputEventScreenTouch, 0, t.vbuttons[0].center, false)
+			for i in 20: await get_tree().physics_frame
+			print("AUTOTEST stick-mode ▲ -> states %s" % [seen])
+			# d-pad mode: hold ▶ -> walk forward
+			t.set_mode("dpad")
+			F[0].reset(-1.5); F[1].reset(1.5)
+			for i in 5: await get_tree().physics_frame
+			var x0: float = F[0].pos.x
+			var right: Vector2 = t.dpad_center + Vector2(t.dpad_r * 0.7, 0)
+			ev.call(InputEventScreenTouch, 0, right)
+			for i in 30: await get_tree().physics_frame
+			print("AUTOTEST dpad ▶ -> x=%d state=%s walked=%.2f" % [t.x, F[0].state, F[0].pos.x - x0])
+			await shot.call("dpad")
+			ev.call(InputEventScreenTouch, 0, right, false)
+			t.set_mode("stick")
 		"combat":
 			await _combat_checks()
 		"string":

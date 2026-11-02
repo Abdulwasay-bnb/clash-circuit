@@ -1140,8 +1140,11 @@ func show_pause() -> void:
 	var v := VBoxContainer.new()
 	pc.add_child(v)
 	v.add_child(lbl("PAUSED", 34, F_TITLE, INK, 6))
-	var m := _menu_list([["RESUME", toggle_pause], ["MOVE LIST", func(): show_moves(0)], ["RESTART MATCH", func(): G.start_match(G.cfg, G.picks)],
-		["CHARACTER SELECT", func(): var c: Dictionary = G.cfg; G.leave_game(); show_select(c)], ["MAIN MENU", show_title]])
+	var items := [["RESUME", toggle_pause], ["MOVE LIST", func(): show_moves(0)], ["RESTART MATCH", func(): G.start_match(G.cfg, G.picks)],
+		["CHARACTER SELECT", func(): var c: Dictionary = G.cfg; G.leave_game(); show_select(c)], ["MAIN MENU", show_title]]
+	if touch_enabled:
+		items.insert(2, ["TOUCH CONTROLS: " + ("D-PAD" if touch.mode == "dpad" else "STICK"), func(): touch.toggle_mode(); show_pause()])
+	var m := _menu_list(items)
 	m.set_meta("back", toggle_pause)
 	v.add_child(m)
 	pc.reset_size()

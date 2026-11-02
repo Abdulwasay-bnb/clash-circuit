@@ -7,3 +7,6 @@ build/
 # Editor / OS
 .DS_Store
 *.tmp
+
+# Mixamo animations: usable in builds, but the raw files must not be redistributed
+characters/_anims/
