@@ -69,6 +69,9 @@ func _ready() -> void:
 	Data.load_all()
 	await ClipLib.load_all_async(get_tree(), func(f): loader.progress("LOADING MOVES", f * 0.7))
 	_setup_input_map()
+	if OS.has_feature("mobile") or "--phone" in OS.get_cmdline_user_args():
+		# phones: the whole 2D UI 25% larger (menus are laid out for a 900-unit-tall screen)
+		get_window().content_scale_factor = 1.25
 	if OS.has_feature("mobile"):
 		# Phones: lighter shadows, no MSAA, slightly reduced 3D resolution (UI stays sharp).
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
@@ -944,7 +947,7 @@ func _run_autotest() -> void:
 			var vp := get_viewport()
 			var ev := func(cls, idx: int, pos: Vector2, pressed := true):
 				var e = cls.new()
-				e.index = idx; e.position = pos
+				e.index = idx; e.position = get_viewport().get_final_transform() * pos   # injected events are in window pixels
 				if cls == InputEventScreenTouch: e.pressed = pressed
 				Input.parse_input_event(e)
 			var x0: float = F[0].pos.x

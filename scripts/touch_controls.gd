@@ -78,7 +78,7 @@ func _layout() -> void:
 	# fixed d-pad (d-pad mode)
 	dpad_r = clampf(s.y * 0.16, 70.0, 140.0)
 	dpad_center = Vector2(dpad_r * 1.45, s.y - dpad_r * 1.35)
-	pause_rect = Rect2(Vector2(s.x / 2 - 34, s.y - 64), Vector2(68, 50))
+	pause_rect = Rect2(Vector2(s.x / 2 - 48, s.y - 86), Vector2(96, 72))
 	queue_redraw()
 
 
@@ -222,5 +222,5 @@ func _draw() -> void:
 	draw_rect(pause_rect, Color(0, 0, 0, 0.35))
 	draw_rect(pause_rect, Color(1, 1, 1, 0.4), false, 2.0)
 	var pc := pause_rect.get_center()
-	draw_rect(Rect2(pc + Vector2(-12, -12), Vector2(8, 24)), Color(1, 1, 1, 0.85))
-	draw_rect(Rect2(pc + Vector2(4, -12), Vector2(8, 24)), Color(1, 1, 1, 0.85))
+	draw_rect(Rect2(pc + Vector2(-16, -17), Vector2(11, 34)), Color(1, 1, 1, 0.85))
+	draw_rect(Rect2(pc + Vector2(5, -17), Vector2(11, 34)), Color(1, 1, 1, 0.85))

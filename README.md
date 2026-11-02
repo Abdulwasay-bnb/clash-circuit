@@ -135,6 +135,17 @@ To install, copy the APK to the phone and open it (allow installs from this sour
 `adb install -r build/android/ClashCircuit.apk`. The build is debug-signed for testing. Publishing on
 Google Play needs a release keystore.
 
+## 🍎 iPhone / iPad
+
+Apple only allows iPhone apps to be compiled with Xcode on a Mac, so the build runs on a free GitHub macOS runner:
+
+1. On Linux: `./build_ios.sh` exports the Xcode project to `build/ClashCircuit-ios-xcode.zip`.
+2. Attach that zip to a release, then run **Actions → iOS build** with the release tag
+   (`gh workflow run ios.yml -f tag=vX.Y.Z`). It compiles `ClashCircuit.ipa` and attaches it to the same release.
+3. Install the `.ipa` with your own Apple ID using [AltStore](https://altstore.io), [Sideloadly](https://sideloadly.io)
+   (Windows / macOS) or [Impactor](https://github.com/khcrysalis/Impactor) (Linux too). They sign the app for your phone.
+   With a free Apple ID the app has to be re-signed every 7 days; a paid Apple Developer account removes that limit.
+
 ## 🎞️ Mixamo animations
 
 Clips from [Mixamo](https://www.mixamo.com) are retargeted onto the anime fighters at runtime

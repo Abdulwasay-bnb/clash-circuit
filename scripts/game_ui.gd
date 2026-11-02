@@ -36,6 +36,8 @@ var pad_start := false
 var combo_last := [0, 0]
 var touch: TouchControls
 var touch_enabled := false
+var nav_back: Button       # touch only: BACK (top-left) and CONFIRM (bottom-right) on menu screens
+var nav_ok: Button
 
 
 # ---------------------------------------------------------------- helpers
@@ -89,6 +91,9 @@ func sbox(bg: Color, border := Color(0, 0, 0, 0), bw := 0, skew := 0.0) -> Style
 func menu_btn(text: String, cb: Callable, size := 26) -> Button:
 	var b := Button.new()
 	b.text = text
+	if touch_enabled:
+		size = int(size * 1.3)
+		b.custom_minimum_size.y = size * 1.9   # a comfortable thumb target
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_override("font", F_TITLE)
 	b.add_theme_font_size_override("font_size", size)
@@ -333,7 +338,7 @@ func build() -> void:
 	screen = full(Control.new())
 	root.add_child(screen)
 	# On-screen controls on phones / tablets (or forced with --touch for testing on desktop).
-	touch_enabled = DisplayServer.is_touchscreen_available() or OS.has_feature("mobile") or "--touch" in OS.get_cmdline_user_args()
+	touch_enabled = DisplayServer.is_touchscreen_available() or OS.has_feature("mobile") or "--touch" in OS.get_cmdline_user_args() or "--phone" in OS.get_cmdline_user_args()
 	if touch_enabled:
 		# keep the left thumb zone clear: training info goes under the health bars instead
 		train_panel.anchor_top = 0; train_panel.anchor_bottom = 0
@@ -343,6 +348,59 @@ func build() -> void:
 	touch.visible = false
 	touch.pause_pressed.connect(func(): if view == "game" and not G.paused: show_pause())
 	root.add_child(touch)
+	if touch_enabled:
+		nav_back = big_btn("◀  BACK", Color(0.55, 0.62, 0.75), _nav_back)
+		root.add_child(nav_back)
+		nav_back.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		nav_back.position = Vector2(18, 16)
+		nav_ok = big_btn("CONFIRM  ✔", GOLD, _nav_ok)
+		root.add_child(nav_ok)
+		nav_ok.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		nav_ok.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		nav_ok.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		nav_ok.offset_right = -18; nav_ok.offset_bottom = -16
+		nav_back.visible = false; nav_ok.visible = false
+
+
+## A large, skewed touch button.
+func big_btn(text: String, accent: Color, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_override("font", F_TITLE)
+	b.add_theme_font_size_override("font_size", 30)
+	b.add_theme_color_override("font_color", Color(0.02, 0.03, 0.05))
+	b.add_theme_color_override("font_pressed_color", Color(0.02, 0.03, 0.05))
+	b.add_theme_color_override("font_hover_color", Color(0.02, 0.03, 0.05))
+	b.custom_minimum_size = Vector2(190, 76)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		var sb := sbox(accent if st != "pressed" else accent.lightened(0.35), Color(1, 1, 1, 0.5), 2, 0.25)
+		sb.content_margin_left = 26; sb.content_margin_right = 30
+		b.add_theme_stylebox_override(st, sb)
+	b.pressed.connect(func(): G.sfx("ok"); cb.call())
+	return b
+
+
+func _process(_dt: float) -> void:
+	if nav_back == null: return
+	var menus := ["diff", "select", "stage", "moves", "info"]
+	nav_back.visible = view in menus
+	nav_ok.visible = view in ["select", "stage"]
+	if view == "stage": nav_ok.text = "FIGHT!  ✔"
+	elif view == "select" and sel != null: nav_ok.text = "CONFIRM  ✔"
+
+
+func _nav_back() -> void:
+	match view:
+		"select": if sel != null: _select_back(_active_side())
+		"stage": show_select(stage_sel.cfg)
+		_: _back()
+
+
+func _nav_ok() -> void:
+	match view:
+		"select": if sel != null: _select_confirm(_active_side())
+		"stage": _stage_confirm()
 
 
 func _build_hud() -> void:
@@ -684,13 +742,14 @@ func show_title() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 0)
 	screen.add_child(col)
-	col.position = Vector2(110, 90)
+	col.position = Vector2(110, 90) if not touch_enabled else Vector2(90, 24)
+	var logo_size := 118 if not touch_enabled else 80   # phones: room for the bigger menu buttons
 	# logo with a split cyan/pink "chromatic" shadow
 	for word in ["CLASH", "CIRCUIT"]:
 		var holder := Control.new()
-		holder.custom_minimum_size = Vector2(700, 118)
+		holder.custom_minimum_size = Vector2(700, logo_size)
 		for layer in [[Vector2(-5, 3), P1C], [Vector2(5, -3), P2C], [Vector2.ZERO, Color.WHITE]]:
-			var l := lbl(word, 118, F_TITLE, layer[1], 0 if layer[1] != Color.WHITE else 14)
+			var l := lbl(word, logo_size, F_TITLE, layer[1], 0 if layer[1] != Color.WHITE else 14)
 			l.label_settings.shadow_size = 0
 			if layer[1] != Color.WHITE:
 				l.modulate.a = 0.75
@@ -702,7 +761,7 @@ func show_title() -> void:
 	tag.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	tag.add_child(lbl("8 FIGHTERS  ·  8 STYLES  ·  ONE RING", 17, F_TITLE, Color(0.04, 0.05, 0.08)))
 	col.add_child(tag)
-	var sp := Control.new(); sp.custom_minimum_size = Vector2(0, 34); col.add_child(sp)
+	var sp := Control.new(); sp.custom_minimum_size = Vector2(0, 34 if not touch_enabled else 12); col.add_child(sp)
 	var labels := ["VS CPU", "VERSUS", "TRAINING", "HOW TO PLAY", "CONTROLS", "QUIT"]
 	var cbs := [show_difficulty, func(): show_select({mode = "2p"}), func(): show_select({mode = "training"}), show_how, show_controls, func(): G.get_tree().quit()]
 	var items: Array = []
@@ -715,6 +774,9 @@ func show_title() -> void:
 	desc_lbl.custom_minimum_size = Vector2(460, 60)
 	var sp2 := Control.new(); sp2.custom_minimum_size = Vector2(0, 18); col.add_child(sp2)
 	col.add_child(desc_lbl)
+	if touch_enabled:
+		sp2.visible = false; desc_lbl.visible = false
+		for btn in m.get_children(): btn.custom_minimum_size.y = 60
 	# staggered slide-in
 	var i := 0
 	for btn in m.get_children():
@@ -742,6 +804,7 @@ func show_title() -> void:
 	card.add_child(st)
 	var foot := lbl("↑↓ / W S  select    ·    Enter / U  confirm    ·    Esc / J  back", 15, F_BODY, DIM)
 	place(foot, screen, Control.PRESET_BOTTOM_LEFT, Vector2(110, -34))
+	foot.visible = not touch_enabled
 	_focus_first(m)
 
 
@@ -887,13 +950,43 @@ func show_select(c: Dictionary) -> void:
 		card.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT and sel != null:
 				var sd := _active_side()
+				if sel.locked[sd]: return
+				# touch: the first tap previews the fighter, tapping the same card again confirms
+				if touch_enabled and sel.get("tapped", -1) != i:
+					sel.tapped = i
+					if sel.cur[sd] != i: sel.cos[sd] = 0
+					sel.cur[sd] = i; G.sfx("ui"); _render_select()
+					return
 				sel.cur[sd] = i; _select_confirm(sd))
 		strip.add_child(card)
 		card_list.append(card)
+	if touch_enabled:
+		# big outfit switcher for the side that is choosing
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		place(row, screen, Control.PRESET_CENTER_BOTTOM, Vector2(0, -355))
+		row.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		var prev := big_btn("◀", Color(0.24, 0.84, 1.0), func(): _select_move(_active_side(), "u"))
+		prev.custom_minimum_size.x = 110
+		row.add_child(prev)
+		var cos_big := lbl("", 26, F_TITLE, INK, 6)
+		cos_big.custom_minimum_size = Vector2(330, 0)
+		cos_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(cos_big)
+		var nxt := big_btn("▶", Color(0.24, 0.84, 1.0), func(): _select_move(_active_side(), "d"))
+		nxt.custom_minimum_size.x = 110
+		row.add_child(nxt)
+		sel.cos_big = cos_big
+		sel.cos_row = row
 	var help := lbl("◀ ▶  A D / Arrows  fighter    ·    W S / ↑ ↓  costume    ·    U / Enter  confirm    ·    J / Esc  back" if c.mode != "2p" \
 		else "P1   A D fighter · W S costume · U        ·        P2   ◀ ▶ fighter · ↑ ↓ costume · Num4 / O        ·        Esc  back", 15, F_BODY, DIM)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	place(help, screen, Control.PRESET_CENTER_BOTTOM, Vector2(0, -18))
+	help.visible = not touch_enabled
+	if touch_enabled:
+		for u in side_ui:
+			u.radar.visible = false; u.sig.visible = false; u.sty.visible = false; u.cos.visible = false
 	_render_select()
 
 
@@ -944,6 +1037,13 @@ func _render_select() -> void:
 		var sm := _signature(C)
 		u.sig.text = ("[right]" if u.right else "") + "[color=#8e9bb0]SIGNATURE[/color]   [b]%s[/b]   %s" % [sm.name, cmd_bb(sm.key, C)] + ("[/right]" if u.right else "")
 		u.dif.text = "DIFFICULTY   " + "◆".repeat(C.diff) + "◇".repeat(3 - C.diff)
+	if sel.has("cos_big"):
+		var sd := _active_side()
+		var idx2: int = sel.cur[sd]
+		sel.cos_row.visible = idx2 < 8 and not sel.locked[sd]
+		if idx2 < 8:
+			var names2: Array = Models.costume_names(Data.ROSTER[idx2].id)
+			sel.cos_big.text = "OUTFIT:  %s   %d/%d" % [names2[sel.cos[sd]].to_upper(), sel.cos[sd] + 1, names2.size()]
 
 
 func _select_move(s: int, d: String) -> void:
@@ -972,6 +1072,7 @@ func _select_confirm(s: int) -> void:
 		sel.cur[s] = randi_range(0, 7)
 		sel.cos[s] = randi_range(0, Models.costume_names(Data.ROSTER[sel.cur[s]].id).size() - 1)
 	sel.locked[s] = true
+	sel.tapped = -1
 	G.sfx("ok")
 	if sel.cfg.mode != "2p" and s == 0:
 		sel.cur[1] = (sel.cur[0] + randi_range(1, 7)) % 8
@@ -1043,12 +1144,16 @@ func show_stage(c: Dictionary, p: Array) -> void:
 		card.mouse_entered.connect(func(): if view == "stage" and stage_sel.i != i: stage_sel.i = i; _render_stage())
 		card.gui_input.connect(func(ev):
 			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+				if touch_enabled and stage_sel.get("tapped", -1) != i:
+					stage_sel.tapped = i; stage_sel.i = i; _render_stage()
+					return
 				stage_sel.i = i; _stage_confirm())
 		strip.add_child(card)
 		stage_sel.cards.append([card, e])
 	var help := lbl("◀ ▶  A D / Arrows  choose    ·    U / Enter  fight!    ·    J / Esc  back", 15, F_BODY, DIM)
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	place(help, screen, Control.PRESET_CENTER_BOTTOM, Vector2(0, -18))
+	help.visible = not touch_enabled
 	_render_stage()
 
 
