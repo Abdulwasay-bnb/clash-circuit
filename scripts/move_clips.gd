@@ -24,12 +24,14 @@ const CLIPS := {
 	"tornado": [["atk_hurricane", "lf"]],
 	"sweep": [["atk_sweep", "rf"]],
 	"jump": [["atk_jump_kick_a", "lf"]],
+	"crescent": [["atk_crescent", "rf"]],
+	"dropkick": [["atk_dropkick", "rf"]],
 }
 
-const LEG_KINDS := ["knee", "flyknee", "kick", "push", "round_high", "round_mid", "low_kick", "spin", "tornado", "sweep", "jump"]
+const LEG_KINDS := ["knee", "flyknee", "kick", "push", "round_high", "round_mid", "low_kick", "spin", "tornado", "sweep", "jump", "crescent", "dropkick"]
 
 ## Clips whose strike the analyzer can't see (a sweep stays on the floor).
-const IMPACT := {"atk_sweep": 0.87}
+const IMPACT := {"atk_sweep": 0.87, "atk_crescent": 1.33, "atk_dropkick": 1.40}
 
 ## Name keywords -> clip kind. Order matters: the first match wins. "round" resolves by the move's height.
 const KINDS := [
@@ -37,7 +39,7 @@ const KINDS := [
 	["headbutt", "headbutt"],
 	["sweep", "sweep"], ["rasteira", "sweep"], ["ground spin", "sweep"],
 	["jump kick", "jump"], ["aú kick", "jump"], ["voador", "jump"],
-	["gale", "tornado"], ["tornado", "tornado"], ["butterfly", "tornado"], ["triple", "tornado"],
+	["dropkick", "dropkick"], ["crescent", "crescent"], ["gale", "tornado"], ["tornado", "tornado"], ["butterfly", "tornado"], ["triple", "tornado"],
 	["backfist", "hook"], ["spin", "spin"], ["pivot", "spin"], ["compasso", "spin"], ["queixada", "spin"], ["armada", "spin"], ["meia lua", "spin"],
 	["body hook", "body"], ["body shovel", "body"], ["gut", "body"], ["liver", "body"], ["body blow", "body"],
 	["low", "low_kick"], ["shin", "low_kick"], ["leg kick", "low_kick"],
@@ -52,7 +54,7 @@ const KINDS := [
 	["rising boot", "kick"], ["heel", "kick"], ["kick", "kick"],
 ]
 ## Moves that keep their keyframed animation until a fitting clip exists.
-const SKIP := ["crescent", "enzuigiri", "axe", "dropkick", "tesoura", "stomp", "dig", "lariat", "chop",
+const SKIP := ["enzuigiri", "axe", "tesoura", "stomp", "dig", "lariat", "chop",
 	"double axe", "twin", "throw", "suplex", "slam", "clinch", "surge", "freight", "iron mountain", "bolo",
 	"anvil", "skyhook", "overhand", "bananeira", "sway back", "hammer servo", "smash"]
 

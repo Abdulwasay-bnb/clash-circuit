@@ -6,6 +6,7 @@ const GRAV := 0.0072
 const ARENA_R := 7.4
 const ADDITIVE := preload("res://shaders/additive.gdshader")
 
+const INTRO_FRAMES := 200   # match-start animation, then "FIGHT!" at 45 frames left
 var ui: GameUI
 var camera: Camera3D
 var mode := ""
@@ -371,7 +372,7 @@ func start_round() -> void:
 	if mode == "training":
 		phase = "fight"; F[0].meter = 100.0
 		return
-	phase = "intro"; phase_t = 110
+	phase = "intro"; phase_t = INTRO_FRAMES
 	ui.announce("FINAL ROUND" if wins[0] == 1 and wins[1] == 1 else "ROUND %d" % round_n, "")
 
 
@@ -684,7 +685,8 @@ func _update_camera() -> void:
 		var S: Fighter = surge_cam.f
 		cx = S.pos.x; cz = S.pos.z; dist = 2.4; h = 1.15; ly = 1.3; ang += -0.5 if S.side else 0.5
 	if phase == "intro" and phase_t > 50:
-		dist += (phase_t - 50) * 0.03; ang += (phase_t - 50) * 0.006
+		var k := minf(phase_t - 50, 60)
+		dist += k * 0.03; ang += k * 0.006
 	if phase == "end" or (phase == "ko" and phase_t < 100 and winner >= 0):
 		var W: Fighter = F[maxi(0, winner)]
 		cx = W.pos.x; cz = W.pos.z; dist = 3.0; ly = 1.2; h = 1.3

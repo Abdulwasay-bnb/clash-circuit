@@ -543,6 +543,21 @@ static func idle_clip(id: String) -> String:
 	return {"mara": "idle_bounce", "kael": "idle_bounce", "sora": "idle_bounce", "bastion": "idle_fight_b", "tao": "idle_fight_b"}.get(id, "idle_fight")
 
 
+## Match-start and victory animations, per fighter (fall back to the keyframed poses when missing).
+const INTRO := {"vex": "intro_salute", "bastion": "intro_flex", "sora": "intro_bow", "ember": "intro_neck",
+	"mara": "intro_warmup", "lio": "intro_warmup", "tao": "intro_bow", "kael": "intro_bow"}
+const WIN := {"vex": "win_boxing", "bastion": "win_cheer", "sora": "win_celebrate", "ember": "win_cheer",
+	"mara": "win_boxing", "lio": "win_celebrate", "tao": "win_fistpump", "kael": "win_fistpump"}
+## Paired throw clips [attacker, victim] for grapplers; everyone else uses the shared pair.
+const THROWS := {"ember": ["throw_hell_a", "thrown_hell_b"], "bastion": ["throw_takedown_a", "thrown_takedown_b"]}
+
+
+static func throw_pair(f: Fighter) -> Array:
+	var p: Array = THROWS.get(f.C.id, []) if f != null else []
+	if p.size() == 2 and ClipLib.has(p[0]) and ClipLib.has(p[1]): return p
+	return ["throw", "thrown"]
+
+
 static func _len(n: String) -> float:
 	var c: ClipLib.Clip = ClipLib.get_clip(n)
 	return c.length if c != null else 1.0
@@ -558,6 +573,11 @@ func clip_request() -> Array:
 		"crouch":
 			return ["crouch_idle", fmod(anim_t, _len("crouch_idle"))]
 		"idle":
+			var ic: String = INTRO.get(C.id, "")
+			if G.phase == "intro" and ClipLib.has(ic):
+				# fit the clip into the intro, never slower than real time
+				var el := float(G.INTRO_FRAMES - G.phase_t) / 60.0
+				return [ic, minf(el * maxf(1.0, _len(ic) / 2.4), _len(ic))]
 			var n := idle_clip(C.id)
 			return [n, fmod(anim_t, _len(n))]
 		"walkf":
@@ -585,9 +605,14 @@ func clip_request() -> Array:
 		"getup":
 			return ["getup_quick", minf(sf / 22.0, 1.0) * _len("getup_quick")]
 		"throwing":
-			return ["throw", minf(sf / 60.0, 1.0) * _len("throw")]
+			var n: String = throw_pair(self)[0]
+			return [n, minf(sf / 60.0, 1.0) * _len(n)]
 		"thrown":
-			return ["thrown", minf(sf / 60.0, 1.0) * _len("thrown")]
+			var n: String = throw_pair(thrower)[1]
+			return [n, minf(sf / 60.0, 1.0) * _len(n)]
+		"win":
+			var n: String = WIN.get(C.id, "")
+			return [n, minf(sf / 60.0, _len(n))]
 	return ["", 0.0]
 
 
