@@ -34,6 +34,8 @@ var costume := 0
 var clip_name := ""
 var clip_t := 0.0
 var clip_hip := true
+var clip_mirror := false
+var prev_mirror := false
 var prev_name := ""
 var prev_t := 0.0
 var fade := 1.0
@@ -628,17 +630,19 @@ func _place_accessories(G: Dictionary) -> void:
 
 # ---------------------------------------------------------------- Mixamo clip layer
 ## Request a clip for this frame ("" = keyframed poses only). t is the time into the clip in seconds.
-func set_clip(name: String, t: float, use_hip := true) -> void:
+func set_clip(name: String, t: float, use_hip := true, mirror := false) -> void:
 	if name == "" or not ClipLib.has(name):
 		clip_target = 0.0
 		return
 	clip_target = 1.0
-	if name != clip_name:
+	if name != clip_name or mirror != clip_mirror:
 		if clip_name != "" and clip_w > 0.01:
 			prev_name = clip_name
 			prev_t = clip_t
+			prev_mirror = clip_mirror
 			fade = 0.0
 		clip_name = name
+		clip_mirror = mirror
 	clip_t = t
 	clip_hip = use_hip
 
@@ -646,11 +650,11 @@ func set_clip(name: String, t: float, use_hip := true) -> void:
 func _clip_sample() -> Array:
 	var cur: ClipLib.Clip = ClipLib.get_clip(clip_name)
 	if cur == null: return [{}, Vector3.ZERO]
-	var s := cur.sample(clip_t)
+	var s := cur.sample(clip_t, clip_mirror)
 	if fade < 1.0 and prev_name != "":
 		var pc: ClipLib.Clip = ClipLib.get_clip(prev_name)
 		if pc != null:
-			var ps := pc.sample(prev_t)
+			var ps := pc.sample(prev_t, prev_mirror)
 			var mix := {}
 			for kk in s[0]:
 				mix[kk] = (ps[0][kk] as Quaternion).slerp(s[0][kk], fade) if ps[0].has(kk) else s[0][kk]

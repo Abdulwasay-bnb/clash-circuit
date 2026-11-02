@@ -551,6 +551,12 @@ static func _len(n: String) -> float:
 ## Which Mixamo clip (and time) fits the current state; "" keeps the keyframed poses.
 func clip_request() -> Array:
 	match state:
+		"attack":
+			var d = MoveClips.info(move)
+			if d == null: return ["", 0.0]
+			return [d.clip, MoveClips.time_at(d, move, sf), d.mirror]
+		"crouch":
+			return ["crouch_idle", fmod(anim_t, _len("crouch_idle"))]
 		"idle":
 			var n := idle_clip(C.id)
 			return [n, fmod(anim_t, _len(n))]
@@ -590,7 +596,7 @@ func render(t: float) -> void:
 	anim_t += clampf(t - last_rt, 0.0, 0.1)
 	last_rt = t
 	var cr := clip_request()
-	rig.set_clip(cr[0], cr[1], state != "thrown")
+	rig.set_clip(cr[0], cr[1], state != "thrown", cr[2] if cr.size() > 2 else false)
 	var a := Engine.get_physics_interpolation_fraction()
 	var p := Pose.lerp_p(prev_disp, disp, a)
 	rig.position = prev_pos.lerp(pos, a)

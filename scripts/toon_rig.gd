@@ -300,7 +300,7 @@ func set_face(_name: String) -> void:
 	pass
 
 
-func set_clip(_name: String, _t: float, _use_hip := true) -> void:
+func set_clip(_name: String, _t: float, _use_hip := true, _mirror := false) -> void:
 	pass   # procedural fighters don't use Mixamo clips
 
 

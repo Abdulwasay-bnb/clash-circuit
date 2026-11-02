@@ -979,6 +979,22 @@ func _run_autotest() -> void:
 			await shot.call("dpad")
 			ev.call(InputEventScreenTouch, 0, right, false)
 			t.set_mode("stick")
+		"cliphits":
+			for nm in ClipLib.clips.keys():
+				if not nm.begins_with("atk_"): continue
+				var c: ClipLib.Clip = ClipLib.get_clip(nm)
+				var hs := []
+				for h in c.hits: hs.append("%s@%.2fs(reach %.2f, h %.2f)" % [h.limb, h.t, h.reach, h.height])
+				print("AUTOTEST %-20s len %.2fs  hits: %s" % [nm, c.length, ", ".join(hs)])
+			for C in Data.ROSTER:
+				var mapped := []
+				var n_att := 0
+				for m in C.moves.values():
+					if m.trans or m.is_throw or m.surge: continue
+					n_att += 1
+					var d = MoveClips.info(m)
+					if d != null: mapped.append("%s=%s%s" % [m.key, d.clip.trim_prefix("atk_"), "(M)" if d.mirror else ""])
+				print("AUTOTEST map %-8s %d/%d: %s" % [C.id, mapped.size(), n_att, " ".join(mapped)])
 		"combat":
 			await _combat_checks()
 		"string":

@@ -33,6 +33,8 @@ class Move:
 	var ch_launch := false
 	var hidden := false
 	var track: Array = []   # [[frame, PackedFloat32Array], ...]
+	var limb := ""          # striking limb from the strike pose: lh rh lf rf lk rk
+	var clip_info = null    # cached Mixamo mapping (MoveClips)
 	var end := 0
 
 
@@ -125,6 +127,7 @@ static func compile(d: Dictionary) -> Dictionary:
 				# Follow-through: carry a little past the strike, then settle back.
 				m.track.append([m.s + m.a + maxi(2, roundi(m.r * 0.22)), Pose.lerp_p(g, strike, 1.1), 1])
 		m.end = m.s + m.a + m.r
+		m.limb = _strike_limb(s.get("p"))
 		moves[k] = m
 	var stances := {}
 	if d.has("stances"):
@@ -140,6 +143,23 @@ static func compile(d: Dictionary) -> Dictionary:
 	}
 	C.ai = ai_profile(C)
 	return C
+
+
+static func _strike_limb(p) -> String:
+	if not (p is Dictionary): return ""
+	var g := func(k: String) -> float: return float(p.get(k, 0.0))
+	var legs := {"lk": g.call("lk") > 1.9 and g.call("lhx") < -1.5, "rk": g.call("rk") > 1.9 and g.call("rhx") < -1.5}
+	if legs.lk: return "lk"
+	if legs.rk: return "rk"
+	var lleg := maxf(-g.call("lhx"), absf(g.call("lhz")))
+	var rleg := maxf(-g.call("rhx"), absf(g.call("rhz")))
+	if maxf(lleg, rleg) > 1.2:
+		return "lf" if lleg > rleg else "rf"
+	var larm := maxf(-g.call("lsx"), absf(g.call("lsz")))
+	var rarm := maxf(-g.call("rsx"), absf(g.call("rsz")))
+	if maxf(larm, rarm) > 1.0:
+		return "lh" if larm > rarm else "rh"
+	return ""
 
 
 static func ai_profile(C: Dictionary) -> Dictionary:
